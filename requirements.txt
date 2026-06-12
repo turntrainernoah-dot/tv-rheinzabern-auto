@@ -1,0 +1,2 @@
+paramiko>=3.0
+openpyxl>=3.1
