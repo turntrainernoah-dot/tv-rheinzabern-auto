@@ -39,7 +39,7 @@ SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
 
 GMAIL_USER         = os.environ.get("GMAIL_USER",         "turntrainernoah@gmail.com")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-EMAIL_TO           = os.environ.get("EMAIL_TO",           "noahwoe0212@gmail.com")
+EMAIL_TO           = os.environ.get("EMAIL_TO",           "turntrainernoah@gmail.com")
 
 # ════════════════════════════════════════════════════════════════
 #  NAME-MAPPING
@@ -329,17 +329,23 @@ def calc_saturday(d):
     days_since_sat = (d.weekday() - 5) % 7
     return d - timedelta(days=days_since_sat)
 
-def build_gruppen(entries, saturday):
-    """Gibt GRUPPEN-Dict zurück (alle Namen, nur die Trainierten mit Tages-Indizes)."""
-    # Initialisiere alle mit leeren Listen
+def calc_friday(d):
+    """Gibt den Freitag der Woche zurück die d enthält (Fr=Wochenstart)."""
+    # weekday: Mon=0, Fri=4
+    days_since_fri = (d.weekday() - 4) % 7
+    return d - timedelta(days=days_since_fri)
+
+def build_gruppen(entries, week_start, num_days):
+    """Gibt GRUPPEN-Dict zurück (alle Namen, nur die Trainierten mit Tages-Indizes).
+    num_days: 4 für Sa-Di, 5 für Fr-Di"""
     gruppen = {}
     for grp, names in WC_GRUPPEN_TEMPLATE.items():
         gruppen[grp] = {name: [] for name in names}
 
     for d, group, wc_name in entries:
-        day_idx = (d - saturday).days
-        if not (0 <= day_idx <= 3):
-            print(f"[WARN] {wc_name} am {d} liegt ausserhalb Sa-Di (idx={day_idx}), ignoriere.")
+        day_idx = (d - week_start).days
+        if not (0 <= day_idx < num_days):
+            print(f"[WARN] {wc_name} am {d} liegt ausserhalb Periode (idx={day_idx}), ignoriere.")
             continue
         current = gruppen.get(group, {}).get(wc_name)
         if current is None:
@@ -347,7 +353,7 @@ def build_gruppen(entries, saturday):
             continue
         if day_idx not in current:
             current.append(day_idx)
-            current.sort()  # Aufsteigend sortiert
+            current.sort()
 
     return gruppen
 
@@ -452,14 +458,24 @@ def main():
     for d, grp, name in entries:
         print(f"  {d.strftime('%d.%m.%Y')} – {grp}: {name}")
 
-    # Samstag der Woche berechnen
-    min_date = min(d for d, _, _ in entries)
-    saturday = calc_saturday(min_date)
-    tuesday  = saturday + timedelta(days=3)
+    # Wochenstart berechnen (Fr oder Sa, je nach Flag)
+    min_date        = min(d for d, _, _ in entries)
+    use_friday      = wc_state.get("use_friday_start", False)
 
-    week_start_short = saturday.strftime("%d.%m.%y")
-    start_datum      = saturday.strftime("%d.%m.%Y")
-    end_datum        = tuesday.strftime("%d.%m.%Y")
+    if use_friday:
+        week_start  = calc_friday(min_date)
+        num_days    = 5
+        wday_abbr   = ["Fr", "Sa", "So", "Mo", "Di"]
+        print("[INFO] use_friday_start=True → Periode Fr-Di (5 Tage)")
+    else:
+        week_start  = calc_saturday(min_date)
+        num_days    = 4
+        wday_abbr   = ["Sa", "So", "Mo", "Di"]
+
+    end_date         = week_start + timedelta(days=num_days - 1)
+    week_start_short = week_start.strftime("%d.%m.%y")
+    start_datum      = week_start.strftime("%d.%m.%Y")
+    end_datum        = end_date.strftime("%d.%m.%Y")
 
     print(f"\nWoche: {start_datum} – {end_datum} (ab {week_start_short})")
 
@@ -470,7 +486,7 @@ def main():
         return
 
     # GRUPPEN-Dict aufbauen
-    gruppen = build_gruppen(entries, saturday)
+    gruppen = build_gruppen(entries, week_start, num_days)
 
     # VORHERIGE_PUNKTE aus State
     all_vorpunkte = wc_state.get("alle_vorpunkte", DEFAULT_VORPUNKTE.copy())
@@ -481,10 +497,9 @@ def main():
             vorherige[key] = all_vorpunkte.get(key, 0)
 
     # TAGE_HEADER
-    wday_abbr  = ["Sa", "So", "Mo", "Di"]
     tage_header = []
     for i, abbr in enumerate(wday_abbr):
-        d_str = (saturday + timedelta(days=i)).strftime("%d.%m.")
+        d_str = (week_start + timedelta(days=i)).strftime("%d.%m.")
         tage_header.append(f"{abbr}\n{d_str}")  # echtes Newline
 
     # Template laden und CONFIG ersetzen
@@ -532,7 +547,7 @@ def main():
         return
 
     # PDF + XLSX finden
-    datum_short = saturday.strftime("%d.%m.%y")
+    datum_short = week_start.strftime("%d.%m.%y")
     ordner      = f"/tmp/Wochenchallenge/ab {datum_short}"
     pdf_path    = f"{ordner}/ab_{datum_short}_Wochenchallenge.pdf"
     xlsx_path   = f"{ordner}/ab_{datum_short}_Wochenchallenge.xlsx"
@@ -568,6 +583,7 @@ def main():
 
     wc_state["last_processed_week_start"] = week_start_short
     wc_state["alle_vorpunkte"]            = all_vorpunkte
+    wc_state["use_friday_start"]          = False  # nach Verarbeitung immer zurücksetzen
     save_wc_state(sftp, wc_state)
 
     sftp.close()
