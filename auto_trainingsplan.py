@@ -624,23 +624,25 @@ def main():
         stored_hash = plan_data.get("absences_hash", "")
 
         if not plan_data or not stored_hash:
-            # Plan ohne gespeicherten Hash (manuell erstellt) → Hash-Tracking initialisieren
-            print(f"Plan ohne Hash fuer {datum_kurz} → initialisiere Hash-Tracking.")
+            # Plan ohne gespeicherten Hash (manuell erstellt oder erste Initialisierung)
+            # → Plan mit AKTUELLEN Abwesenheiten NEU ERSTELLEN (nicht nur Hash speichern)
+            print(f"Plan ohne Hash fuer {datum_kurz} → Plan wird mit aktuellen Abwesenheiten erstellt.")
             combo_idx = state.get("geraet_combo_index", 0)
             geraet_combo = GERAETE_ROTATION[combo_idx % len(GERAETE_ROTATION)]
-            state.setdefault("plan_data", {})[datum_kurz] = {
-                "absences_hash":    new_hash,
+            # plan_data mit Defaults initialisieren und stored_hash="" setzen
+            # damit die Update-Logik unten sicher ausgeführt wird
+            plan_data = {
+                "absences_hash":    "",   # leer → abs_changed=True → Plan wird generiert
                 "trainer_absences": list(absences.get("Trainer", [])),
-                "stored_absences":  absences,
+                "stored_absences":  {},
                 "geraet_1":         geraet_combo[0],
                 "geraet_2":         geraet_combo[1],
                 "g1_starts_geraet2": state.get("g1_starts_geraet2", False),
             }
+            state.setdefault("plan_data", {})[datum_kurz] = plan_data
             if datum_kurz not in state.get("generated_plans", []):
                 state.setdefault("generated_plans", []).append(datum_kurz)
-            save_state(sftp, state)
-            sftp.close(); ssh.close()
-            return
+            stored_hash = ""   # explizit leer → Update-Logik greift
 
         has_new_anm = len(anmerkungen_server) > 0
         abs_changed = (new_hash != stored_hash)
