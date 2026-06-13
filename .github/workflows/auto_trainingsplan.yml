@@ -2,11 +2,10 @@ name: Automatischer Trainingsplan
 
 on:
   schedule:
-    # Kritisches Fenster (18–22 Uhr UTC = 20–00 Uhr CEST): alle 10 Minuten
-    # → Neue Pläne + letzte Abmeldungen rechtzeitig erfassen
-    - cron: '*/10 18,19,20,21 * * *'
-    # Rest des Tages: stündlich als Background-Check
-    - cron: '0 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,22,23 * * *'
+    # Alle 30 Minuten rund um die Uhr — reagiert auf Abwesenheitsänderungen
+    - cron: '*/30 * * * *'
+    # Mi + Fr um 16:00 Uhr CEST (= 14:00 UTC) — garantierte Vorab-Kontrolle
+    - cron: '0 14 * * 3,5'
   workflow_dispatch:   # Manueller Start über GitHub jederzeit möglich
 
 jobs:
