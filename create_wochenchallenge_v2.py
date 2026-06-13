@@ -284,8 +284,7 @@ def create_pdf():
           ("FONTSIZE",(0,r),(6,r),8),("ALIGN",(0,r),(6,r),"CENTER"),("VALIGN",(0,r),(6,r),"MIDDLE")]
     r+=1
 
-    data.append(["Name","Sa\n"+START_DATUM[0:5],"So\n"+("31.05." if "30" in START_DATUM else ""),
-                 "Mo\n01.06.","Di\n02.06.","Ergebnis","Insgesamt"])
+    data.append(["Name"] + TAGE_HEADER + ["Ergebnis", "Insgesamt"])
     st+=[ ("BACKGROUND",(0,r),(4,r),hx(C_HEADER_TAGE)),
           ("BACKGROUND",(5,r),(5,r),hx(C_HEADER_ERG)),
           ("BACKGROUND",(6,r),(6,r),hx(C_HEADER_INSG)),

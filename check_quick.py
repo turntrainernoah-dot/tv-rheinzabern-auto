@@ -73,8 +73,18 @@ def main():
     except Exception:
         state = {}
 
-    plan_exists = datum_kurz in state.get("generated_plans", [])
-    print(f"Plan vorhanden: {plan_exists}")
+    # Primär: State-Check (schnell). Sekundär: SFTP-Stat (robust gegen manuelle Löschung)
+    in_state = datum_kurz in state.get("generated_plans", [])
+    plan_exists = in_state
+    if in_state:
+        try:
+            sftp.stat(f"trainingspläne/{datum_kurz}_Trainingsplan.pdf")
+        except FileNotFoundError:
+            print(f"Plan in State, aber PDF nicht auf Server – behandle als fehlend")
+            plan_exists = False
+        except Exception:
+            pass  # Stat-Fehler: lieber annehmen Plan existiert, als unnötig neu bauen
+    print(f"Plan vorhanden: {plan_exists} (state={in_state})")
 
     # ── Kein Plan vorhanden ────────────────────────────────
     if not plan_exists:

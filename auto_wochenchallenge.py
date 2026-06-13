@@ -531,9 +531,11 @@ def main():
         sftp.close(); ssh.close()
         return
 
-    # PDF finden
+    # PDF + XLSX finden
     datum_short = saturday.strftime("%d.%m.%y")
-    pdf_path    = f"/tmp/Wochenchallenge/ab {datum_short}/ab_{datum_short}_Wochenchallenge.pdf"
+    ordner      = f"/tmp/Wochenchallenge/ab {datum_short}"
+    pdf_path    = f"{ordner}/ab_{datum_short}_Wochenchallenge.pdf"
+    xlsx_path   = f"{ordner}/ab_{datum_short}_Wochenchallenge.xlsx"
 
     if not os.path.exists(pdf_path):
         msg = f"PDF nicht gefunden: {pdf_path}\n\nScript-Output:\n{result.stdout[:500]}"
@@ -544,10 +546,18 @@ def main():
 
     print(f"PDF gefunden: {pdf_path}")
 
-    # Hochladen
+    # PDF hochladen
     remote_pdf = f"wochen-challenge/ab_{datum_short}_Wochenchallenge.pdf"
     sftp.put(pdf_path, remote_pdf)
     print(f"[OK] Hochgeladen: {remote_pdf}")
+
+    # XLSX hochladen (falls vorhanden)
+    if os.path.exists(xlsx_path):
+        remote_xlsx = f"wochen-challenge/ab_{datum_short}_Wochenchallenge.xlsx"
+        sftp.put(xlsx_path, remote_xlsx)
+        print(f"[OK] Hochgeladen: {remote_xlsx}")
+    else:
+        print(f"[WARN] XLSX nicht gefunden, nur PDF hochgeladen.")
 
     # Neue Vorpunkte berechnen (altes Total + diese Woche)
     for grp, members in gruppen.items():
