@@ -1,0 +1,40 @@
+name: Automatische Wochenchallenge
+
+on:
+  # Ausgelöst durch Google Apps Script (WC_trigger.gs) wenn WC-Mail ankommt
+  repository_dispatch:
+    types: [wochenchallenge]
+
+  # Manueller Start über GitHub (zum Testen)
+  workflow_dispatch:
+
+  # Fallback: Mi 22:00 Uhr CEST (= 20:00 UTC) automatisch prüfen
+  schedule:
+    - cron: '0 20 * * 3'
+
+jobs:
+  generate-wc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Pakete installieren
+        run: pip install paramiko>=3.0 openpyxl>=3.1 reportlab
+
+      - name: Wochenchallenge generieren und hochladen
+        env:
+          SSH_HOST:           ${{ secrets.SSH_HOST }}
+          SSH_USER:           ${{ secrets.SSH_USER }}
+          SSH_PASSWORD:       ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT:           ${{ secrets.SSH_PORT }}
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO:           ${{ secrets.EMAIL_TO }}
+        run: python auto_wochenchallenge.py

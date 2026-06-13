@@ -2,10 +2,8 @@ name: Automatischer Trainingsplan
 
 on:
   schedule:
-    # Mi + Fr um 22:00 Uhr DE-Zeit (Sommerzeit = UTC+2 → 20:00 UTC)
-    # Mittwoch 22:00: erstellt Freitag-Plan
-    # Freitag  22:00: erstellt nächsten Mittwoch-Plan
-    - cron: '0 20 * * 3,5'
+    # Alle 30 Minuten prüfen ob ein Update/neuer Plan nötig ist
+    - cron: '*/30 * * * *'
   workflow_dispatch:   # Manueller Start über GitHub jederzeit möglich
 
 jobs:
@@ -21,21 +19,38 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Python-Pakete installieren
-        run: pip install -r requirements.txt
+      - name: paramiko installieren (immer – schnell)
+        run: pip install paramiko>=3.0
+
+      - name: Schnell-Check (Abwesenheiten + Anmerkungen)
+        id: quickcheck
+        env:
+          SSH_HOST:     ${{ secrets.SSH_HOST }}
+          SSH_USER:     ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT:     ${{ secrets.SSH_PORT }}
+        run: python check_quick.py
+
+      # ── Ab hier nur wenn eine Änderung erkannt wurde ──────────
+
+      - name: openpyxl installieren
+        if: steps.quickcheck.outputs.needs_update == 'true'
+        run: pip install openpyxl>=3.1
 
       - name: LibreOffice installieren (für PDF-Export)
+        if: steps.quickcheck.outputs.needs_update == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y libreoffice --no-install-recommends
 
-      - name: Trainingsplan generieren
+      - name: Trainingsplan generieren / aktualisieren
+        if: steps.quickcheck.outputs.needs_update == 'true'
         env:
-          SSH_HOST:          ${{ secrets.SSH_HOST }}
-          SSH_USER:          ${{ secrets.SSH_USER }}
-          SSH_PASSWORD:      ${{ secrets.SSH_PASSWORD }}
-          SSH_PORT:          ${{ secrets.SSH_PORT }}
-          GMAIL_USER:        ${{ secrets.GMAIL_USER }}
+          SSH_HOST:           ${{ secrets.SSH_HOST }}
+          SSH_USER:           ${{ secrets.SSH_USER }}
+          SSH_PASSWORD:       ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT:           ${{ secrets.SSH_PORT }}
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+          EMAIL_TO:           ${{ secrets.EMAIL_TO }}
         run: python auto_trainingsplan.py
