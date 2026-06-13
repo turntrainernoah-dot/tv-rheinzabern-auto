@@ -42,6 +42,12 @@ def is_publication_window():
     now = datetime.now(timezone.utc)
     return now.weekday() in (2, 4) and now.hour >= 20
 
+def is_within_creation_window(next_date):
+    """Erlaubt Plan-Erstellung wenn Training innerhalb von 5 Tagen liegt
+    ODER im Publikationsfenster (Mi/Fr 22:00 CEST)."""
+    days_away = (next_date - date.today()).days
+    return days_away <= 5 or is_publication_window()
+
 def md5(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
 
@@ -73,7 +79,7 @@ def main():
     except Exception:
         state = {}
 
-    # Primär: State-Check (schnell). Sekundär: SFTP-Stat (robust gegen manuelle Löschung)
+    # Primär: State-Check. Sekundär: SFTP-Stat (robust gegen manuelle Uploads/Löschungen)
     in_state = datum_kurz in state.get("generated_plans", [])
     plan_exists = in_state
     if in_state:
@@ -83,19 +89,29 @@ def main():
             print(f"Plan in State, aber PDF nicht auf Server – behandle als fehlend")
             plan_exists = False
         except Exception:
-            pass  # Stat-Fehler: lieber annehmen Plan existiert, als unnötig neu bauen
+            pass  # Stat-Fehler: lieber annehmen Plan existiert
+    else:
+        # Auch manuell hochgeladene Pläne erkennen (nicht im State)
+        try:
+            sftp.stat(f"trainingspläne/{datum_kurz}_Trainingsplan.pdf")
+            plan_exists = True
+            print(f"Plan auf Server gefunden (manuell hochgeladen, nicht im State)")
+        except Exception:
+            pass
     print(f"Plan vorhanden: {plan_exists} (state={in_state})")
 
     # ── Kein Plan vorhanden ────────────────────────────────
     if not plan_exists:
         sftp.close(); client.close()
-        if is_publication_window():
+        if is_within_creation_window(next_date):
             now = datetime.now(timezone.utc)
-            print(f"Kein Plan + Veroeffentlichungsfenster ({now.strftime('%H:%M')} UTC) → ERSTELLEN")
+            days_away = (next_date - date.today()).days
+            print(f"Kein Plan + {days_away} Tage bis Training ({now.strftime('%H:%M')} UTC) → ERSTELLEN")
             set_output("needs_update", "true")
         else:
             now = datetime.now(timezone.utc)
-            print(f"Kein Plan, aber ausserhalb Fenster ({now.strftime('%H:%M')} UTC) → WARTEN")
+            days_away = (next_date - date.today()).days
+            print(f"Kein Plan, Training in {days_away} Tagen ({now.strftime('%H:%M')} UTC) → WARTEN")
             set_output("needs_update", "false")
         return
 
@@ -104,12 +120,10 @@ def main():
     stored_hash = plan_data.get("absences_hash", "")
 
     if not stored_hash:
-        # Alter Plan ohne gespeicherten Hash (vor dem Update) – nicht anfassen
-        print(f"Kein gespeicherter Hash fuer {datum_kurz} (alter Plan) → unveraendert lassen")
-        # Aber noch Anmerkungen pruefen (koennen trotzdem relevant sein)
-        # → bei alten Plaenen lieber nicht anfassen, Anmerkungen beim naechsten neuen Plan
+        # Plan ohne gespeicherten Hash (manuell erstellt) → Hash-Tracking initialisieren
+        print(f"Kein gespeicherter Hash fuer {datum_kurz} → Hash-Tracking starten")
         sftp.close(); client.close()
-        set_output("needs_update", "false")
+        set_output("needs_update", "true")
         return
 
     # Abmeldungs-Hash laden
