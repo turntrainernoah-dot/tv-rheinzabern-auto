@@ -2,9 +2,10 @@ name: Automatischer Trainingsplan
 
 on:
   schedule:
-    # Alle 4 Stunden (UTC) = 2:00 / 6:00 / 10:00 / 14:00 / 18:00 / 22:00 Uhr UTC
-    # = 4:00 / 8:00 / 12:00 / 16:00 / 20:00 / 24:00 Uhr DE (Sommerzeit)
-    - cron: '0 0,4,8,12,16,20 * * *'
+    # Mi + Fr um 22:00 Uhr DE-Zeit (Sommerzeit = UTC+2 → 20:00 UTC)
+    # Mittwoch 22:00: erstellt Freitag-Plan
+    # Freitag  22:00: erstellt nächsten Mittwoch-Plan
+    - cron: '0 20 * * 3,5'
   workflow_dispatch:   # Manueller Start über GitHub jederzeit möglich
 
 jobs:
