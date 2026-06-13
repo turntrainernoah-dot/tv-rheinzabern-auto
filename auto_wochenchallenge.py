@@ -461,19 +461,27 @@ def main():
     for d, grp, name in entries:
         print(f"  {d.strftime('%d.%m.%Y')} – {grp}: {name}")
 
-    # Wochenstart berechnen (Fr oder Sa, je nach Flag)
-    min_date        = min(d for d, _, _ in entries)
-    use_friday      = wc_state.get("use_friday_start", False)
+    # Wochenstart berechnen (Fr oder Sa, je nach Flag oder Auto-Detect)
+    min_date   = min(d for d, _, _ in entries)
+    use_friday = wc_state.get("use_friday_start", False)
 
     if use_friday:
-        week_start  = calc_friday(min_date)
-        num_days    = 5
-        wday_abbr   = ["Fr", "Sa", "So", "Mo", "Di"]
+        week_start = calc_friday(min_date)
+        num_days   = 5
+        wday_abbr  = ["Fr", "Sa", "So", "Mo", "Di"]
         print("[INFO] use_friday_start=True → Periode Fr-Di (5 Tage)")
+    elif min_date.weekday() == 4:
+        # AUTO-DETECT: min_date ist ein Freitag → Fr-Di Periode (5 Tage)
+        # calc_saturday(Freitag) würde sonst auf den VORHERIGEN Samstag zeigen
+        # und eine Duplikat-Erkennung auslösen, obwohl es eine neue Woche ist.
+        week_start = calc_friday(min_date)
+        num_days   = 5
+        wday_abbr  = ["Fr", "Sa", "So", "Mo", "Di"]
+        print(f"[INFO] min_date {min_date} ist Freitag → automatisch Periode Fr-Di (5 Tage)")
     else:
-        week_start  = calc_saturday(min_date)
-        num_days    = 4
-        wday_abbr   = ["Sa", "So", "Mo", "Di"]
+        week_start = calc_saturday(min_date)
+        num_days   = 4
+        wday_abbr  = ["Sa", "So", "Mo", "Di"]
 
     end_date         = week_start + timedelta(days=num_days - 1)
     week_start_short = week_start.strftime("%d.%m.%y")
@@ -492,7 +500,10 @@ def main():
     gruppen = build_gruppen(entries, week_start, num_days)
 
     # VORHERIGE_PUNKTE aus State
-    all_vorpunkte = wc_state.get("alle_vorpunkte", DEFAULT_VORPUNKTE.copy())
+    # WICHTIG: .get() mit Default hilft nur wenn Key fehlt, nicht wenn Value leer ({})
+    all_vorpunkte = wc_state.get("alle_vorpunkte") or DEFAULT_VORPUNKTE.copy()
+    if not wc_state.get("alle_vorpunkte"):
+        print("[WARN] alle_vorpunkte leer/fehlend im State → verwende DEFAULT_VORPUNKTE")
     vorherige     = {}
     for grp, members in gruppen.items():
         for name in members:
