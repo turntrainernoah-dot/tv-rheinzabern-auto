@@ -9,6 +9,8 @@ on:
 jobs:
   generate-plan:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Node.js 20 → 24 (Pflicht ab 16.06.2026)
 
     steps:
       - name: Repository auschecken
