@@ -301,7 +301,10 @@ def parse_email_body(body):
         name_text = re.sub(r'\s+', ' ', name_text).strip()
 
         # Name nachschlagen (case-insensitive)
+        # Klammern normalisieren: "Ben (G1)" → "ben g1", "Finn (G3)" → "finn g3"
         name_lower = name_text.lower().strip()
+        name_lower = re.sub(r'[()]', '', name_lower)
+        name_lower = re.sub(r'\s+', ' ', name_lower).strip()
 
         if name_lower in NAME_MAP:
             group, wc_name = NAME_MAP[name_lower]
