@@ -161,9 +161,11 @@ def normalize_name(name):
 
 def read_abmeldungen(sftp):
     f    = sftp.open("abmeldungen/abmeldungen.json", "r")
-    data = json.loads(f.read().decode("utf-8", errors="replace"))
+    raw  = f.read()
     f.close()
-    return data
+    data = json.loads(raw.decode("utf-8", errors="replace"))
+    raw_hash = hashlib.md5(raw).hexdigest()
+    return data, raw_hash
 
 def read_anmerkungen_server(sftp):
     """Liest ungelesene Trainer-Anmerkungen vom Server."""
@@ -596,10 +598,11 @@ def main():
     ssh, sftp = get_sftp()
 
     state              = load_state(sftp)
-    abmeldungen        = read_abmeldungen(sftp)
+    abmeldungen, raw_abm_hash = read_abmeldungen(sftp)
     anmerkungen_server = read_anmerkungen_server(sftp)
     print(f"Abmeldungen geladen: {len(abmeldungen)} Eintraege")
     print(f"Ungelesene Anmerkungen: {len(anmerkungen_server)}")
+    print(f"Abmeldungen-Hash (raw): {raw_abm_hash[:8]}...")
 
     today         = date.today()
     training_date = next_training_date()
@@ -610,9 +613,10 @@ def main():
 
     print(f"\nNaechstes Training: {wtag} {datum} ({days_away} Tage)\n")
 
-    # Abwesenheiten und Hash immer berechnen
+    # Abwesenheiten und Hash berechnen
     absences, late_notes = get_absences(abmeldungen, training_date)
-    new_hash             = compute_absences_hash(absences)
+    # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
+    new_hash = raw_abm_hash
 
     if plan_exists(sftp, datum_kurz):
         # ── Plan vorhanden: prüfe ob Update nötig ──────────────
@@ -620,8 +624,21 @@ def main():
         stored_hash = plan_data.get("absences_hash", "")
 
         if not plan_data or not stored_hash:
-            # Alter Plan ohne gespeicherte plan_data → nicht anfassen
-            print("Plan vorhanden (alter Stil ohne plan_data) → nichts zu tun.")
+            # Plan ohne gespeicherten Hash (manuell erstellt) → Hash-Tracking initialisieren
+            print(f"Plan ohne Hash fuer {datum_kurz} → initialisiere Hash-Tracking.")
+            combo_idx = state.get("geraet_combo_index", 0)
+            geraet_combo = GERAETE_ROTATION[combo_idx % len(GERAETE_ROTATION)]
+            state.setdefault("plan_data", {})[datum_kurz] = {
+                "absences_hash":    new_hash,
+                "trainer_absences": list(absences.get("Trainer", [])),
+                "stored_absences":  absences,
+                "geraet_1":         geraet_combo[0],
+                "geraet_2":         geraet_combo[1],
+                "g1_starts_geraet2": state.get("g1_starts_geraet2", False),
+            }
+            if datum_kurz not in state.get("generated_plans", []):
+                state.setdefault("generated_plans", []).append(datum_kurz)
+            save_state(sftp, state)
             sftp.close(); ssh.close()
             return
 
@@ -765,16 +782,18 @@ def main():
 
     else:
         # ── Kein Plan vorhanden: erstelle neuen ────────────────
-        now_utc = datetime.now(timezone.utc)
-        if not is_publication_window():
+        # Erlaubt wenn Training ≤5 Tage entfernt (= genug Zeit, aber nicht zu früh)
+        now_utc   = datetime.now(timezone.utc)
+        days_away = (training_date - date.today()).days
+        if days_away > 5 and not is_publication_window():
             print(
-                f"Kein Plan vorhanden, aber ausserhalb Veroeffentlichungsfenster "
-                f"({now_utc.strftime('%H:%M')} UTC). Warte auf Mi/Fr 22:00."
+                f"Kein Plan vorhanden, Training in {days_away} Tagen "
+                f"({now_utc.strftime('%H:%M')} UTC) → warte noch."
             )
             sftp.close(); ssh.close()
             return
 
-        print(f"Kein Plan vorhanden, starte Generierung... ({now_utc.strftime('%H:%M')} UTC)")
+        print(f"Kein Plan vorhanden, starte Generierung... (Training in {days_away} Tagen, {now_utc.strftime('%H:%M')} UTC)")
 
         new_combo_idx = (state.get("geraet_combo_index", 2) + 1) % 3
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
