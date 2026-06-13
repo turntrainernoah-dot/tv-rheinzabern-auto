@@ -4,8 +4,8 @@ on:
   schedule:
     # Alle 30 Minuten rund um die Uhr — reagiert auf Abwesenheitsänderungen
     - cron: '*/30 * * * *'
-    # Mi + Fr um 16:00 Uhr CEST (= 14:00 UTC) — garantierte Vorab-Kontrolle
-    - cron: '0 14 * * 3,5'
+    # Mi + Fr um 16:00 Uhr — sowohl Sommer (14 UTC) als auch Winter (15 UTC)
+    - cron: '0 14,15 * * 3,5'
   workflow_dispatch:   # Manueller Start über GitHub jederzeit möglich
 
 jobs:
