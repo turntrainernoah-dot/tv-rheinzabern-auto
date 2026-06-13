@@ -6,7 +6,7 @@ Läuft via GitHub Actions alle 4 Stunden.
 PC muss NICHT an sein.
 """
 
-import json, os, sys, smtplib, tempfile, shutil, subprocess
+import json, os, re, sys, smtplib, tempfile, shutil, subprocess
 from datetime import date, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -141,11 +141,44 @@ def plan_exists(sftp, datum_kurz):
     except FileNotFoundError:
         return False
 
+def normalize_name(name):
+    """Konvertiert 'Felix (G1)' → 'Felix G1', 'Ben (G3)' → 'Ben G3' etc."""
+    return re.sub(r'\s*\(G(\d+)\)$', r' G\1', name.strip())
+
 def read_abmeldungen(sftp):
     f = sftp.open("abmeldungen/abmeldungen.json", "r")
     data = json.loads(f.read().decode("utf-8", errors="replace"))
     f.close()
     return data
+
+def read_anmerkungen_server(sftp):
+    """Liest ungelesene Trainer-Anmerkungen vom Server."""
+    try:
+        f = sftp.open("anmerkungen/anmerkungen.json", "r")
+        data = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+        # Nur ungelesene zurückgeben
+        return [a for a in data if not a.get("gelesen", False)]
+    except Exception:
+        return []
+
+def mark_anmerkungen_gelesen(sftp, ids_to_mark):
+    """Markiert angegebene Anmerkungen als gelesen auf dem Server."""
+    if not ids_to_mark:
+        return
+    try:
+        f = sftp.open("anmerkungen/anmerkungen.json", "r")
+        data = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+        for entry in data:
+            if entry.get("id") in ids_to_mark:
+                entry["gelesen"] = True
+        f = sftp.open("anmerkungen/anmerkungen.json", "w")
+        f.write(json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+        f.close()
+        print(f"[OK] {len(ids_to_mark)} Anmerkung(en) als gelesen markiert.")
+    except Exception as e:
+        print(f"[WARN] Anmerkungen konnten nicht markiert werden: {e}")
 
 def upload_pdf(sftp, local_path, datum_kurz):
     remote = f"trainingspläne/{datum_kurz}_Trainingsplan.pdf"
@@ -164,7 +197,7 @@ def get_absences(abmeldungen, training_date):
     for entry in abmeldungen:
         if entry.get("datum") != target:
             continue
-        name   = entry.get("name", "").strip()
+        name   = normalize_name(entry.get("name", "").strip())
         gruppe = entry.get("gruppe", "").strip()
         notiz  = entry.get("notiz", "").strip()
 
@@ -589,12 +622,15 @@ def main():
     print("Verbinde mit Server...")
     ssh, sftp = get_sftp()
 
-    state       = load_state(sftp)
-    abmeldungen = read_abmeldungen(sftp)
+    state        = load_state(sftp)
+    abmeldungen  = read_abmeldungen(sftp)
+    anmerkungen_server = read_anmerkungen_server(sftp)
     print(f"Abmeldungen geladen: {len(abmeldungen)} Einträge")
+    print(f"Ungelesene Anmerkungen: {len(anmerkungen_server)}")
 
     today     = date.today()
-    upcoming  = next_training_dates(n=3)
+    # Nur das nächste Training generieren (Mi→Fr, Fr→Mi)
+    upcoming  = next_training_dates(n=1)
     generated = False
 
     for training_date in upcoming:
@@ -604,11 +640,6 @@ def main():
         days_away  = (training_date - today).days
 
         print(f"\nPrüfe {wtag} {datum} ({days_away} Tage)...")
-
-        # Nur generieren wenn Training innerhalb 7 Tagen
-        if days_away > 7:
-            print("  → zu weit in der Zukunft, überspringe.")
-            continue
 
         # Schon vorhanden?
         if plan_exists(sftp, datum_kurz):
@@ -651,6 +682,14 @@ def main():
             absences, geraet_1, geraet_2, g1_starts_g2
         )
 
+        # Trainer-Anmerkungen vom Server anhängen
+        for anm in anmerkungen_server:
+            ts_short = anm.get("ts", "")[:10]  # "06.06.2026"
+            trainer  = anm.get("trainer", "")
+            notiz    = anm.get("notiz", "").strip()
+            if notiz:
+                anmerkungen.append(f"• {trainer} ({ts_short}): {notiz}")
+
         # Excel + PDF bauen
         xlsx_path, pdf_path = build_excel(
             datum=datum,
@@ -666,6 +705,10 @@ def main():
         # Hochladen
         upload_pdf(sftp, pdf_path, datum_kurz)
 
+        # Anmerkungen als gelesen markieren
+        ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
+        mark_anmerkungen_gelesen(sftp, ids_gelesen)
+
         # State aktualisieren
         state["last_training_date"]  = datum
         state["geraet_combo_index"]  = new_combo_idx
@@ -674,6 +717,13 @@ def main():
         save_state(sftp, state)
 
         # Bestätigungs-E-Mail
+        anm_text = ""
+        if anmerkungen_server:
+            anm_lines = "\n".join(
+                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+                for a in anmerkungen_server if a.get("notiz","").strip()
+            )
+            anm_text = f"\nEingebaute Trainer-Anmerkungen:\n{anm_lines}\n"
         send_email(
             f"✅ Trainingsplan {datum} automatisch erstellt",
             f"Hallo Noah,\n\n"
@@ -684,7 +734,8 @@ def main():
             f"  G1: {', '.join(absences.get('G1','')) or 'Alle da'}\n"
             f"  G2: {', '.join(absences.get('G2','')) or 'Alle da'}\n"
             f"  G3: {', '.join(absences.get('G3','')) or 'Alle da'}\n"
-            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}\n\n"
+            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}\n"
+            f"{anm_text}\n"
             f"Der Plan ist jetzt auf der Website verfügbar.\n"
             f"Falls etwas nicht stimmt, öffne bitte Claude.\n\n"
             f"Grüße,\nDein Auto-Bot"
