@@ -76,7 +76,7 @@ SSH_PASSWORD  = os.environ.get("SSH_PASSWORD", "")
 SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
 GMAIL_USER         = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-EMAIL_TO      = os.environ.get("EMAIL_TO", "noahwoe0212@gmail.com")
+EMAIL_TO      = os.environ.get("EMAIL_TO", "turntrainernoah@gmail.com")
 
 # ════════════════════════════════════════════════════════════════
 #  STATE (gespeichert auf dem Server als state_auto.json)
@@ -498,29 +498,19 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
         FARBEN["legende_bg"], font(bold=True, size=10))
     row += 1
 
+    # Nur anwesende Trainer in der Einteilung zeigen
+    anwesende_trainer = [t for t in ALLE_TRAINER if t not in abwesend.get("Trainer", [])]
+
     set_cell(ws, row, 2, "Zeit", FARBEN["header"], font(bold=True))
-    for ci, trainer in enumerate(ALLE_TRAINER, start=3):
-        ab    = trainer in abwesend.get("Trainer", [])
-        label = f"{trainer} x" if ab else trainer
-        set_cell(ws, row, ci, label, FARBEN["header"], font(bold=True))
+    for ci, trainer in enumerate(anwesende_trainer, start=3):
+        set_cell(ws, row, ci, trainer, FARBEN["header"], font(bold=True))
     row += 1
 
     for slot_idx, slot_label in enumerate(ZEITSLOTS):
         ws.row_dimensions[row].height = 38
         set_cell(ws, row, 2, slot_label, FARBEN["header"], font(bold=True))
 
-        for ci, trainer in enumerate(ALLE_TRAINER, start=3):
-            ab = trainer in abwesend.get("Trainer", [])
-            if ab:
-                st = sondertiming.get(trainer)
-                if st and slot_idx == 0:
-                    set_cell(ws, row, ci, st, FARBEN["sonder"],
-                             font(bold=True), align(wrap=True))
-                else:
-                    set_cell(ws, row, ci, "-", FARBEN["abwesend"],
-                             font(bold=True, color="555555"))
-                continue
-
+        for ci, trainer in enumerate(anwesende_trainer, start=3):
             plan = trainer_plan.get(trainer)
             if plan is None or slot_idx >= len(plan):
                 continue
@@ -580,19 +570,20 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
 #  E-MAIL
 # ════════════════════════════════════════════════════════════════
 
-def send_email(subject, body):
+def send_email(subject, body, to=None):
+    recipient = to or EMAIL_TO
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print(f"[EMAIL-TEST] {subject}")
+        print(f"[EMAIL-TEST] → {recipient}: {subject}")
         return
     msg = MIMEMultipart()
     msg["From"]    = GMAIL_USER
-    msg["To"]      = EMAIL_TO
+    msg["To"]      = recipient
     msg["Subject"] = subject
     msg.attach(MIMEText(body, "plain", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
         s.login(GMAIL_USER, GMAIL_APP_PASSWORD)
         s.send_message(msg)
-    print(f"[OK] E-Mail gesendet: {subject}")
+    print(f"[OK] E-Mail gesendet an {recipient}: {subject}")
 
 # ════════════════════════════════════════════════════════════════
 #  MAIN
@@ -677,4 +668,235 @@ def main():
         geraet_2     = plan_data["geraet_2"]
         g1_starts_g2 = plan_data["g1_starts_geraet2"]
 
-        issues, anwesend_tr
+        issues, anwesend_trainer = detect_complex(absences, late_notes)
+        if issues:
+            body = (
+                f"Hallo Noah,\n\nKonnte Plan fuer {datum} nicht aktualisieren:\n\n"
+                + "\n".join(f"  - {i}" for i in issues)
+                + f"\n\nBitte manuell pruefen.\n\nGrueße, Auto-Bot"
+            )
+            send_email(f"Plan-Update {datum} – Fehler", body)
+            print("Fehler beim Update! E-Mail gesendet.")
+            sftp.close(); ssh.close()
+            return
+
+        trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
+            absences, geraet_1, geraet_2, g1_starts_g2
+        )
+
+        # Verspätungen / frühes Gehen als Hinweis eintragen
+        for note in late_notes:
+            anmerkungen.append(note)
+
+        # Trainer-Anmerkungen eintragen (Name: Text, ohne Datum)
+        for anm in anmerkungen_server:
+            trainer_name = anm.get("trainer", "")
+            notiz        = anm.get("notiz", "").strip()
+            if notiz:
+                anmerkungen.append(f"• {trainer_name}: {notiz}")
+
+        xlsx_path, pdf_path = build_excel(
+            datum=datum, wochentag=wtag,
+            geraet_1=geraet_1, geraet_2=geraet_2,
+            abwesend=absences,
+            trainer_plan=trainer_plan,
+            sondertiming=sondertiming,
+            anmerkungen=anmerkungen,
+        )
+        upload_pdf(sftp, pdf_path, datum_kurz)
+
+        ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
+        mark_anmerkungen_gelesen(sftp, ids_gelesen)
+
+        # State: nur Hash aktualisieren, rest bleibt
+        plan_data["absences_hash"]    = new_hash
+        plan_data["stored_absences"]  = absences
+        save_state(sftp, state)
+
+        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen
+        if anmerkungen_server:
+            anm_lines = "\n".join(
+                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+                for a in anmerkungen_server if a.get("notiz","").strip()
+            )
+            send_email(
+                f"Trainer-Anmerkung fuer {datum} – bitte pruefen",
+                f"Hallo Noah,\n\n"
+                f"Es liegt eine neue Trainer-Anmerkung fuer das Training {wtag}, {datum} vor:\n\n"
+                f"{anm_lines}\n\n"
+                f"Die Anmerkung wurde bereits in den Plan eingebaut und hochgeladen.\n"
+                f"Bitte prüfe, ob alles korrekt eingetragen ist.\n\nGrueße, Auto-Bot",
+                to="turntrainernoah@gmail.com"
+            )
+
+        # Notification: Verspätungen / frühes Gehen → bitte prüfen
+        if late_notes:
+            send_email(
+                f"Verspätung/Frühes Gehen fuer {datum} – bitte pruefen",
+                f"Hallo Noah,\n\n"
+                f"Fuer das Training {wtag}, {datum} gibt es folgende Hinweise:\n\n"
+                + "\n".join(f"  {n}" for n in late_notes) +
+                f"\n\nDiese wurden im Plan als Hinweis eingetragen.\n\nGrueße, Auto-Bot",
+                to="turntrainernoah@gmail.com"
+            )
+
+        # Zusammenfassung E-Mail
+        anm_text = ""
+        if anmerkungen_server:
+            anm_text = f"\nEingebaute Trainer-Anmerkungen:\n" + "\n".join(
+                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+                for a in anmerkungen_server if a.get("notiz","").strip()
+            ) + "\n"
+        send_email(
+            f"Plan {datum} aktualisiert",
+            f"Hallo Noah,\n\n"
+            f"der Trainingsplan fuer {wtag}, {datum} wurde automatisch aktualisiert.\n\n"
+            f"Geraete: {geraet_1} + {geraet_2}\n\n"
+            f"Abwesend:\n"
+            f"  Trainer: {', '.join(absences.get('Trainer','')) or 'Alle da'}\n"
+            f"  G1: {', '.join(absences.get('G1','')) or 'Alle da'}\n"
+            f"  G2: {', '.join(absences.get('G2','')) or 'Alle da'}\n"
+            f"  G3: {', '.join(absences.get('G3','')) or 'Alle da'}\n"
+            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}\n"
+            f"{anm_text}\n"
+            f"Grueße, Auto-Bot"
+        )
+        print(f"UPDATE FERTIG fuer {datum}.")
+
+    else:
+        # ── Kein Plan vorhanden: erstelle neuen ────────────────
+        now_utc = datetime.now(timezone.utc)
+        if not is_publication_window():
+            print(
+                f"Kein Plan vorhanden, aber ausserhalb Veroeffentlichungsfenster "
+                f"({now_utc.strftime('%H:%M')} UTC). Warte auf Mi/Fr 22:00."
+            )
+            sftp.close(); ssh.close()
+            return
+
+        print(f"Kein Plan vorhanden, starte Generierung... ({now_utc.strftime('%H:%M')} UTC)")
+
+        new_combo_idx = (state.get("geraet_combo_index", 2) + 1) % 3
+        geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
+        g1_starts_g2 = not state.get("g1_starts_geraet2", True)
+
+        issues, anwesend_trainer = detect_complex(absences, late_notes)
+
+        if issues:
+            body = (
+                f"Hallo Noah,\n\n"
+                f"der automatische Trainingsplan fuer {wtag}, {datum} "
+                f"konnte nicht erstellt werden.\n\n"
+                f"Geraete (geplant): {geraet_1} + {geraet_2}\n\n"
+                f"Probleme:\n" +
+                "\n".join(f"  - {i}" for i in issues) +
+                f"\n\nAnwesende Trainer: {', '.join(anwesend_trainer) or '–'}\n"
+                f"Abwesend Trainer: {', '.join(absences.get('Trainer', [])) or '–'}\n\n"
+                f"Bitte oeffne Claude und erstelle den Plan manuell.\n\nGrueße, Auto-Bot"
+            )
+            send_email(f"Trainingsplan {datum} – manuelle Pruefung noetig", body)
+            print("Komplex! E-Mail gesendet.")
+            sftp.close(); ssh.close()
+            return
+
+        trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
+            absences, geraet_1, geraet_2, g1_starts_g2
+        )
+
+        # Verspätungen / frühes Gehen als Hinweis eintragen
+        for note in late_notes:
+            anmerkungen.append(note)
+
+        # Trainer-Anmerkungen eintragen (Name: Text, ohne Datum)
+        for anm in anmerkungen_server:
+            trainer_name = anm.get("trainer", "")
+            notiz        = anm.get("notiz", "").strip()
+            if notiz:
+                anmerkungen.append(f"• {trainer_name}: {notiz}")
+
+        xlsx_path, pdf_path = build_excel(
+            datum=datum,
+            wochentag=wtag,
+            geraet_1=geraet_1,
+            geraet_2=geraet_2,
+            abwesend=absences,
+            trainer_plan=trainer_plan,
+            sondertiming=sondertiming,
+            anmerkungen=anmerkungen,
+        )
+
+        upload_pdf(sftp, pdf_path, datum_kurz)
+
+        ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
+        mark_anmerkungen_gelesen(sftp, ids_gelesen)
+
+        # State aktualisieren
+        state["last_training_date"] = datum
+        state["geraet_combo_index"] = new_combo_idx
+        state["g1_starts_geraet2"]  = g1_starts_g2
+        state.setdefault("generated_plans", []).append(datum_kurz)
+        state.setdefault("plan_data", {})[datum_kurz] = {
+            "absences_hash":    new_hash,
+            "trainer_absences": list(absences.get("Trainer", [])),
+            "stored_absences":  absences,
+            "geraet_1":         geraet_1,
+            "geraet_2":         geraet_2,
+            "g1_starts_geraet2": g1_starts_g2,
+        }
+        save_state(sftp, state)
+
+        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen
+        if anmerkungen_server:
+            anm_lines = "\n".join(
+                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+                for a in anmerkungen_server if a.get("notiz","").strip()
+            )
+            send_email(
+                f"Trainer-Anmerkung fuer {datum} – bitte pruefen",
+                f"Hallo Noah,\n\n"
+                f"Es liegt eine neue Trainer-Anmerkung fuer das Training {wtag}, {datum} vor:\n\n"
+                f"{anm_lines}\n\n"
+                f"Die Anmerkung wurde bereits in den Plan eingebaut und hochgeladen.\n"
+                f"Bitte prüfe, ob alles korrekt eingetragen ist.\n\nGrueße, Auto-Bot",
+                to="turntrainernoah@gmail.com"
+            )
+
+        # Notification: Verspätungen / frühes Gehen → bitte prüfen
+        if late_notes:
+            send_email(
+                f"Verspätung/Frühes Gehen fuer {datum} – bitte pruefen",
+                f"Hallo Noah,\n\n"
+                f"Fuer das Training {wtag}, {datum} gibt es folgende Hinweise:\n\n"
+                + "\n".join(f"  {n}" for n in late_notes) +
+                f"\n\nDiese wurden im Plan als Hinweis eingetragen.\n\nGrueße, Auto-Bot",
+                to="turntrainernoah@gmail.com"
+            )
+
+        anm_text = ""
+        if anmerkungen_server:
+            anm_text = f"\nEingebaute Trainer-Anmerkungen:\n" + "\n".join(
+                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+                for a in anmerkungen_server if a.get("notiz","").strip()
+            ) + "\n"
+        send_email(
+            f"Trainingsplan {datum} automatisch erstellt",
+            f"Hallo Noah,\n\n"
+            f"der Trainingsplan fuer {wtag}, {datum} wurde automatisch erstellt und hochgeladen.\n\n"
+            f"Geraete: {geraet_1} + {geraet_2}\n\n"
+            f"Abwesend:\n"
+            f"  Trainer: {', '.join(absences.get('Trainer','')) or 'Alle da'}\n"
+            f"  G1: {', '.join(absences.get('G1','')) or 'Alle da'}\n"
+            f"  G2: {', '.join(absences.get('G2','')) or 'Alle da'}\n"
+            f"  G3: {', '.join(absences.get('G3','')) or 'Alle da'}\n"
+            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}\n"
+            f"{anm_text}\n"
+            f"Der Plan ist jetzt auf der Website.\n"
+            f"Falls etwas nicht stimmt, oeffne Claude.\n\nGrueße, Auto-Bot"
+        )
+        print(f"FERTIG! Plan fuer {datum} hochgeladen.")
+
+    sftp.close()
+    ssh.close()
+
+if __name__ == "__main__":
+    main()
