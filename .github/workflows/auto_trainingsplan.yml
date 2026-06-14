@@ -61,7 +61,6 @@ jobs:
           SSH_USER:           ${{ secrets.SSH_USER }}
           SSH_PASSWORD:       ${{ secrets.SSH_PASSWORD }}
           SSH_PORT:           ${{ secrets.SSH_PORT }}
-          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          EMAIL_TO:           ${{ secrets.EMAIL_TO }}
+          WHATSAPP_PHONE:     ${{ secrets.WHATSAPP_PHONE }}
+          CALLMEBOT_APIKEY:   ${{ secrets.CALLMEBOT_APIKEY }}
         run: python auto_trainingsplan.py
