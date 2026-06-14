@@ -464,7 +464,7 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
                 name = tlist[i]
                 ab   = name in abwesend.get(gruppe, [])
                 set_cell(ws, row, ci,
-                         f"{'x' if ab else 'v'} {name}",
+                         f"{'✗' if ab else '✓'} {name}",
                          FARBEN["abwesend_turner"] if ab else FARBEN["anwesend"],
                          font(size=9, color="FFFFFF"), align(h="left"))
             else:
@@ -474,7 +474,7 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
             name = ALLE_TRAINER[i]
             ab   = name in abwesend.get("Trainer", [])
             set_cell(ws, row, 7,
-                     f"{'x' if ab else 'v'} {name}",
+                     f"{'✗' if ab else '✓'} {name}",
                      FARBEN["abwesend_turner"] if ab else FARBEN["anwesend"],
                      font(size=9, color="FFFFFF"), align(h="left"))
         else:
