@@ -250,6 +250,15 @@ def create_xlsx():
     ws.conditional_formatting.add(dr,CellIsRule("between",["3","4"],
         fill=PatternFill("solid",fgColor=C_GREEN),font=Font(name="Arial",color=C_WHITE,bold=True)))
 
+    # Zurück zur Website
+    cur += 2
+    ws.row_dimensions[cur].height = 16
+    ws.merge_cells(f"A{cur}:G{cur}")
+    lc = ws.cell(row=cur, column=1, value="Zurück zur Website: tv-rheinzabern.e-websolutions.de")
+    lc.hyperlink = "https://tv-rheinzabern.e-websolutions.de/"
+    lc.font = Font(name="Arial", size=9, color="0563C1", underline="single")
+    lc.alignment = Alignment(horizontal="center", vertical="center")
+
     ws.sheet_properties.pageSetUpPr.fitToPage=True
     ws.page_setup.fitToHeight=1; ws.page_setup.fitToWidth=1
     wb.save(XLSX_PATH)
@@ -284,7 +293,8 @@ def create_pdf():
           ("FONTSIZE",(0,r),(6,r),8),("ALIGN",(0,r),(6,r),"CENTER"),("VALIGN",(0,r),(6,r),"MIDDLE")]
     r+=1
 
-    data.append(["Name"] + TAGE_HEADER + ["Ergebnis", "Insgesamt"])
+    def _th(i): return TAGE_HEADER[i] if i < len(TAGE_HEADER) else f"Tag {i+1}"
+    data.append(["Name", _th(0), _th(1), _th(2), _th(3), "Ergebnis","Insgesamt"])
     st+=[ ("BACKGROUND",(0,r),(4,r),hx(C_HEADER_TAGE)),
           ("BACKGROUND",(5,r),(5,r),hx(C_HEADER_ERG)),
           ("BACKGROUND",(6,r),(6,r),hx(C_HEADER_INSG)),
