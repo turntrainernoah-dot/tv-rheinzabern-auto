@@ -237,7 +237,8 @@ for _g, _lst in ALLE_TURNER.items():
 ALLE_BEKANNTEN_NAMES.update(ALLE_TRAINER)
 
 def detect_complex(absences, late_notes):
-    issues = []
+    issues        = []   # hard: blockiert Plan-Erstellung
+    soft_warnings = []   # soft: Warnung, aber Plan wird trotzdem erstellt
     anwesend_trainer = [t for t in ALLE_TRAINER if t not in absences.get("Trainer", [])]
     n = len(anwesend_trainer)
 
@@ -253,11 +254,17 @@ def detect_complex(absences, late_notes):
                 issues.append(f"Unbekannter Name: '{name}' (Gruppe: {gruppe})")
 
     for gruppe, turner in ALLE_TURNER.items():
-        abw = absences.get(gruppe, [])
+        abw       = absences.get(gruppe, [])
+        anwesend  = len(turner) - len(abw)
         if len(abw) >= len(turner):
             issues.append(f"Gruppe {gruppe} hat keine anwesenden Turner (alle {len(abw)} abwesend)!")
+        elif anwesend <= 2:
+            soft_warnings.append((
+                f"low_turner_{gruppe}_{anwesend}",
+                f"Gruppe {gruppe} hat nur {anwesend} Turner anwesend."
+            ))
 
-    return issues, anwesend_trainer
+    return issues, anwesend_trainer, soft_warnings
 
 # ════════════════════════════════════════════════════════════════
 #  TRAINER-EINTEILUNG
@@ -703,7 +710,7 @@ def main():
         geraet_2     = plan_data["geraet_2"]
         g1_starts_g2 = plan_data["g1_starts_geraet2"]
 
-        issues, anwesend_trainer = detect_complex(absences, late_notes)
+        issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
         if issues:
             body = (
                 f"Hallo Noah,\n\nKonnte Plan fuer {datum} nicht aktualisieren:\n\n"
@@ -749,18 +756,24 @@ def main():
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
         mark_anmerkungen_gelesen(sftp, ids_gelesen)
 
-        # Late notes deduplication: nur neue Hinweise senden
-        already_sent_notes = set(plan_data.get("late_notes_sent", []))
-        new_late_notes     = [n for n in late_notes if n not in already_sent_notes]
+        # Dedup: late_notes
+        already_sent_notes    = set(plan_data.get("late_notes_sent", []))
+        new_late_notes        = [n for n in late_notes if n not in already_sent_notes]
 
-        # State: Hash + late_notes_sent aktualisieren
-        plan_data["absences_hash"]    = new_hash
-        plan_data["stored_absences"]  = absences
+        # Dedup: soft warnings (≤2 Turner in Gruppe)
+        already_sent_warnings = set(plan_data.get("warnings_sent", []))
+        new_soft_warnings     = [(k, t) for k, t in soft_warnings if k not in already_sent_warnings]
+
+        # State: Hash + dedup-Listen aktualisieren
+        plan_data["absences_hash"]   = new_hash
+        plan_data["stored_absences"] = absences
         if new_late_notes:
             plan_data["late_notes_sent"] = list(already_sent_notes | set(new_late_notes))
+        if new_soft_warnings:
+            plan_data["warnings_sent"] = list(already_sent_warnings | {k for k, _ in new_soft_warnings})
         save_state(sftp, state)
 
-        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen
+        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen (einmalig; Anmerkungen werden als gelesen markiert)
         if anmerkungen_server:
             anm_lines = "\n".join(
                 f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
@@ -782,25 +795,17 @@ def main():
                 f"\n\nSind im Plan eingetragen."
             )
 
-        # Zusammenfassung WhatsApp
-        anm_text = ""
-        if anmerkungen_server:
-            anm_text = f"\nAnmerkungen:\n" + "\n".join(
-                f"• {a.get('trainer','')}: {a.get('notiz','').strip()}"
-                for a in anmerkungen_server if a.get("notiz","").strip()
-            ) + "\n"
-        send_whatsapp(
-            f"Hi Noah, Cloude hier ✅\n\n"
-            f"Trainingsplan für {wtag}, {datum} wurde aktualisiert.\n\n"
-            f"Geräte: {geraet_1} + {geraet_2}\n"
-            f"Abwesend:\n"
-            f"  Trainer: {', '.join(absences.get('Trainer','')) or 'Alle da'}\n"
-            f"  G1: {', '.join(absences.get('G1','')) or 'Alle da'}\n"
-            f"  G2: {', '.join(absences.get('G2','')) or 'Alle da'}\n"
-            f"  G3: {', '.join(absences.get('G3','')) or 'Alle da'}\n"
-            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}"
-            f"{anm_text}"
-        )
+        # Notification: ≤2 Turner in Gruppe → nur neue Warnungen (einmalig pro Plan)
+        if new_soft_warnings:
+            warn_text = "\n".join(f"• {t}" for _, t in new_soft_warnings)
+            send_whatsapp(
+                f"Hi Noah, Cloude hier ⚠️\n\n"
+                f"Hinweis für {wtag}, {datum}:\n\n"
+                f"{warn_text}\n\n"
+                f"Plan wurde trotzdem aktualisiert – nur zur Info."
+            )
+
+        # KEIN Update-Summary mehr (keine Routine-Benachrichtigung bei normalen Abwesenheits-Updates)
         print(f"UPDATE FERTIG fuer {datum}.")
 
     else:
@@ -822,7 +827,7 @@ def main():
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
         g1_starts_g2 = not state.get("g1_starts_geraet2", True)
 
-        issues, anwesend_trainer = detect_complex(absences, late_notes)
+        issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
 
         if issues:
             send_whatsapp(
@@ -882,11 +887,12 @@ def main():
             "geraet_1":         geraet_1,
             "geraet_2":         geraet_2,
             "g1_starts_geraet2": g1_starts_g2,
-            "late_notes_sent":  list(late_notes),  # track sent late notes
+            "late_notes_sent":  list(late_notes),            # bereits gesendet beim Erstellen
+            "warnings_sent":    [k for k, _ in soft_warnings],  # bereits gesendet beim Erstellen
         }
         save_state(sftp, state)
 
-        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen
+        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen (einmalig)
         if anmerkungen_server:
             anm_lines = "\n".join(
                 f"• {a.get('trainer','')}: {a.get('notiz','').strip()}"
@@ -899,7 +905,7 @@ def main():
                 f"Bitte kurz prüfen ob alles stimmt ✅"
             )
 
-        # Notification: Verspätungen / frühes Gehen → bitte prüfen
+        # Notification: Verspätungen / frühes Gehen (einmalig beim Erstellen)
         if late_notes:
             send_whatsapp(
                 f"Hi Noah, Cloude hier ⏰\n\n"
@@ -908,6 +914,17 @@ def main():
                 f"\n\nSind im Plan eingetragen."
             )
 
+        # Notification: ≤2 Turner in Gruppe (einmalig beim Erstellen)
+        if soft_warnings:
+            warn_text = "\n".join(f"• {t}" for _, t in soft_warnings)
+            send_whatsapp(
+                f"Hi Noah, Cloude hier ⚠️\n\n"
+                f"Hinweis für {wtag}, {datum}:\n\n"
+                f"{warn_text}\n\n"
+                f"Plan wurde trotzdem erstellt – nur zur Info."
+            )
+
+        # Haupt-Notification: Plan fertig (immer)
         anm_text = ""
         if anmerkungen_server:
             anm_text = f"\nAnmerkungen:\n" + "\n".join(
