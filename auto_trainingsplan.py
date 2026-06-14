@@ -200,6 +200,11 @@ def upload_pdf(sftp, local_path, datum_kurz):
     sftp.put(local_path, remote)
     print(f"[OK] Hochgeladen: {remote}")
 
+def upload_xlsx(sftp, local_path, datum_kurz):
+    remote = f"trainingspläne/{datum_kurz}_Trainingsplan.xlsx"
+    sftp.put(local_path, remote)
+    print(f"[OK] Hochgeladen: {remote}")
+
 # ════════════════════════════════════════════════════════════════
 #  ABWESENHEITEN AUSWERTEN
 # ════════════════════════════════════════════════════════════════
@@ -536,6 +541,15 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
                 FARBEN["anmerkung"], font(size=9, color="1A5276"), align(h="left"))
             row += 1
 
+    # Zurück zur Website
+    row += 1
+    ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
+    lc = ws.cell(row=row, column=2, value="Zurück zur Website: tv-rheinzabern.e-websolutions.de")
+    lc.hyperlink = "https://tv-rheinzabern.e-websolutions.de/"
+    lc.font = Font(name="Arial", size=9, color="0563C1", underline="single")
+    lc.alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[row].height = 16
+
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToPage   = True
     ws.page_setup.fitToWidth  = 1
@@ -723,13 +737,20 @@ def main():
             anmerkungen=anmerkungen,
         )
         upload_pdf(sftp, pdf_path, datum_kurz)
+        upload_xlsx(sftp, xlsx_path, datum_kurz)
 
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
         mark_anmerkungen_gelesen(sftp, ids_gelesen)
 
-        # State: nur Hash aktualisieren, rest bleibt
+        # Late notes deduplication: nur neue Hinweise senden
+        already_sent_notes = set(plan_data.get("late_notes_sent", []))
+        new_late_notes     = [n for n in late_notes if n not in already_sent_notes]
+
+        # State: Hash + late_notes_sent aktualisieren
         plan_data["absences_hash"]    = new_hash
         plan_data["stored_absences"]  = absences
+        if new_late_notes:
+            plan_data["late_notes_sent"] = list(already_sent_notes | set(new_late_notes))
         save_state(sftp, state)
 
         # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen
@@ -748,13 +769,13 @@ def main():
                 to="turntrainernoah@gmail.com"
             )
 
-        # Notification: Verspätungen / frühes Gehen → bitte prüfen
-        if late_notes:
+        # Notification: Verspätungen / frühes Gehen → nur NEUE Hinweise
+        if new_late_notes:
             send_email(
                 f"Verspätung/Frühes Gehen fuer {datum} – bitte pruefen",
                 f"Hallo Noah,\n\n"
-                f"Fuer das Training {wtag}, {datum} gibt es folgende Hinweise:\n\n"
-                + "\n".join(f"  {n}" for n in late_notes) +
+                f"Fuer das Training {wtag}, {datum} gibt es folgende NEUE Hinweise:\n\n"
+                + "\n".join(f"  {n}" for n in new_late_notes) +
                 f"\n\nDiese wurden im Plan als Hinweis eingetragen.\n\nGrueße, Auto-Bot",
                 to="turntrainernoah@gmail.com"
             )
@@ -847,6 +868,7 @@ def main():
         )
 
         upload_pdf(sftp, pdf_path, datum_kurz)
+        upload_xlsx(sftp, xlsx_path, datum_kurz)
 
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
         mark_anmerkungen_gelesen(sftp, ids_gelesen)
@@ -863,6 +885,7 @@ def main():
             "geraet_1":         geraet_1,
             "geraet_2":         geraet_2,
             "g1_starts_geraet2": g1_starts_g2,
+            "late_notes_sent":  list(late_notes),  # track sent late notes
         }
         save_state(sftp, state)
 
