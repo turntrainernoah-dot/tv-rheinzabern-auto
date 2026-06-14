@@ -19,10 +19,8 @@ Bsp:  13.6 Felix G1
       15.6 Sinan 💪
 """
 
-import json, os, re, sys, imaplib, smtplib, subprocess
+import json, os, re, sys, imaplib, subprocess, urllib.request, urllib.parse
 from datetime import date, timedelta, datetime
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import email as email_lib
 from email.header import decode_header
 
@@ -39,7 +37,8 @@ SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
 
 GMAIL_USER         = os.environ.get("GMAIL_USER",         "turntrainernoah@gmail.com")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-EMAIL_TO           = os.environ.get("EMAIL_TO",           "turntrainernoah@gmail.com")
+WHATSAPP_PHONE    = os.environ.get("WHATSAPP_PHONE", "")
+CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 
 # ════════════════════════════════════════════════════════════════
 #  NAME-MAPPING
@@ -135,22 +134,21 @@ def save_wc_state(sftp, state):
     print("[OK] wc_state_auto.json aktualisiert.")
 
 # ════════════════════════════════════════════════════════════════
-#  E-MAIL
+#  WHATSAPP (CallMeBot)
 # ════════════════════════════════════════════════════════════════
 
-def send_email(subject, body):
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print(f"[EMAIL-TEST] {subject}\n{body[:200]}")
+def send_whatsapp(text):
+    """Sendet eine WhatsApp-Nachricht via CallMeBot (kostenlos)."""
+    if not WHATSAPP_PHONE or not CALLMEBOT_APIKEY:
+        print(f"[WA-TEST] {text[:200]}")
         return
-    msg = MIMEMultipart()
-    msg["From"]    = GMAIL_USER
-    msg["To"]      = EMAIL_TO
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        s.send_message(msg)
-    print(f"[OK] E-Mail gesendet: {subject}")
+    try:
+        encoded = urllib.parse.quote(text)
+        url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_PHONE}&text={encoded}&apikey={CALLMEBOT_APIKEY}"
+        with urllib.request.urlopen(url, timeout=15) as r:
+            print(f"[OK] WhatsApp gesendet (HTTP {r.status}): {text[:80]}...")
+    except Exception as e:
+        print(f"[FEHLER] WhatsApp konnte nicht gesendet werden: {e}")
 
 # ════════════════════════════════════════════════════════════════
 #  IMAP
@@ -448,7 +446,7 @@ def main():
         entries = parse_email_body(body)
     except ValueError as e:
         print(f"[ERROR] Parse-Fehler: {e}")
-        send_email("Fehler: WC-Mail konnte nicht geparst werden", str(e))
+        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDie WC-Mail konnte nicht geparst werden:\n{str(e)[:300]}\n\nBitte WC-Mail nochmal mit korrektem Format schicken.")
         sftp.close(); ssh.close()
         return
 
@@ -522,7 +520,7 @@ def main():
     if not os.path.exists(template_path):
         msg = f"create_wochenchallenge_v2.py nicht gefunden unter {template_path}"
         print(f"[ERROR] {msg}")
-        send_email("Fehler: WC-Template fehlt", msg)
+        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDas WC-Template (create_wochenchallenge_v2.py) fehlt auf dem Server!\n\nBitte manuell hochladen: C:\\Claude\\create_wochenchallenge_v2.py → via upload_now.bat")
         sftp.close(); ssh.close()
         return
 
@@ -534,7 +532,7 @@ def main():
         modified = replace_config_block(template, new_config)
     except ValueError as e:
         print(f"[ERROR] {e}")
-        send_email("Fehler: Template-Modifikation fehlgeschlagen", str(e))
+        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDas WC-Template konnte nicht angepasst werden:\n{str(e)[:300]}")
         sftp.close(); ssh.close()
         return
 
@@ -553,9 +551,9 @@ def main():
     print("STDOUT:", result.stdout[:500])
     if result.returncode != 0:
         print("STDERR:", result.stderr[:500])
-        send_email(
-            "Fehler: WC-Script fehlgeschlagen",
-            f"Returncode: {result.returncode}\n\nSTDERR:\n{result.stderr[:1000]}"
+        send_whatsapp(
+            f"Hi Noah, Cloude hier 🚨\n\nDas WC-Script ist abgestürzt (Code {result.returncode}):\n"
+            f"{result.stderr[:300]}"
         )
         sftp.close(); ssh.close()
         return
@@ -569,7 +567,7 @@ def main():
     if not os.path.exists(pdf_path):
         msg = f"PDF nicht gefunden: {pdf_path}\n\nScript-Output:\n{result.stdout[:500]}"
         print(f"[ERROR] {msg}")
-        send_email("Fehler: WC-PDF nicht gefunden", msg)
+        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDie WC-PDF wurde nicht generiert. Script lief durch aber Datei fehlt.\n{msg[:200]}")
         sftp.close(); ssh.close()
         return
 
@@ -603,18 +601,16 @@ def main():
     sftp.close()
     ssh.close()
 
-    # Bestätigungs-E-Mail
+    # Bestätigungs-WhatsApp
     trainees = [f"{grp} {name}: {len(tage)} Pkt"
                 for grp, members in gruppen.items()
                 for name, tage in members.items() if tage]
-    send_email(
-        f"Wochenchallenge {start_datum} automatisch erstellt",
-        f"Hallo Noah,\n\n"
-        f"die Wochenchallenge fuer {start_datum} – {end_datum} wurde automatisch erstellt.\n\n"
-        f"Trainingspunkte diese Woche:\n" +
+    send_whatsapp(
+        f"Hi Noah, Cloude hier 🏆\n\n"
+        f"Wochenchallenge {start_datum} – {end_datum} ist fertig und hochgeladen!\n\n"
+        f"Punkte diese Woche:\n" +
         "\n".join(f"  {t}" for t in trainees) +
-        f"\n\nPDF hochgeladen: /wochen-challenge/ab_{datum_short}_Wochenchallenge.pdf\n\n"
-        f"Grueße, Auto-Bot"
+        f"\n\ntv-rheinzabern.e-websolutions.de"
     )
 
     print("\nFERTIG!")
