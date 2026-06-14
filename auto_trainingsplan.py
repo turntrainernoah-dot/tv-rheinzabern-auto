@@ -13,10 +13,8 @@ Ablauf:
   - Trainer-Wechsel → E-Mail, manuell prüfen
 """
 
-import json, hashlib, os, re, sys, smtplib, tempfile, shutil, subprocess
+import json, hashlib, os, re, sys, tempfile, shutil, subprocess, urllib.request, urllib.parse
 from datetime import date, timedelta, datetime, timezone
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 import paramiko
 import openpyxl
@@ -74,9 +72,8 @@ SSH_HOST      = os.environ.get("SSH_HOST",     "access-5017462830.webspace-host.
 SSH_USER      = os.environ.get("SSH_USER",     "a2358459")
 SSH_PASSWORD  = os.environ.get("SSH_PASSWORD", "")
 SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
-GMAIL_USER         = os.environ.get("GMAIL_USER", "")
-GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-EMAIL_TO      = os.environ.get("EMAIL_TO", "turntrainernoah@gmail.com")
+WHATSAPP_PHONE    = os.environ.get("WHATSAPP_PHONE", "")
+CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 
 # ════════════════════════════════════════════════════════════════
 #  STATE (gespeichert auf dem Server als state_auto.json)
@@ -583,23 +580,21 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
     return xlsx_path, pdf_path
 
 # ════════════════════════════════════════════════════════════════
-#  E-MAIL
+#  WHATSAPP (CallMeBot)
 # ════════════════════════════════════════════════════════════════
 
-def send_email(subject, body, to=None):
-    recipient = to or EMAIL_TO
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
-        print(f"[EMAIL-TEST] → {recipient}: {subject}")
+def send_whatsapp(text):
+    """Sendet eine WhatsApp-Nachricht via CallMeBot (kostenlos)."""
+    if not WHATSAPP_PHONE or not CALLMEBOT_APIKEY:
+        print(f"[WA-TEST] {text[:200]}")
         return
-    msg = MIMEMultipart()
-    msg["From"]    = GMAIL_USER
-    msg["To"]      = recipient
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        s.send_message(msg)
-    print(f"[OK] E-Mail gesendet an {recipient}: {subject}")
+    try:
+        encoded = urllib.parse.quote(text)
+        url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_PHONE}&text={encoded}&apikey={CALLMEBOT_APIKEY}"
+        with urllib.request.urlopen(url, timeout=15) as r:
+            print(f"[OK] WhatsApp gesendet (HTTP {r.status}): {text[:80]}...")
+    except Exception as e:
+        print(f"[FEHLER] WhatsApp konnte nicht gesendet werden: {e}")
 
 # ════════════════════════════════════════════════════════════════
 #  MAIN
@@ -689,8 +684,15 @@ def main():
                 f"Nicht mehr abwesend: {', '.join(sorted(removed)) or '–'}\n\n"
                 f"Bitte erstelle den Plan manuell in Claude.\n\nGrueße, Auto-Bot"
             )
-            send_email(f"Trainer-Aenderung fuer {datum} – manuell pruefen", body)
-            print("Trainer-Aenderung! E-Mail gesendet.")
+            send_whatsapp(
+                f"Hi Noah, hier ist Cloude ✋\n\n"
+                f"Beim Trainingsplan für {wtag}, {datum} hat sich bei den Trainern etwas geändert "
+                f"und ich kann den Plan nicht automatisch anpassen.\n\n"
+                f"Neu abwesend: {', '.join(sorted(added)) or '–'}\n"
+                f"Nicht mehr abwesend: {', '.join(sorted(removed)) or '–'}\n\n"
+                f"Bitte erstell den Plan kurz manuell in Claude. 🙏"
+            )
+            print("Trainer-Aenderung! WhatsApp gesendet.")
             sftp.close(); ssh.close()
             return
 
@@ -708,8 +710,13 @@ def main():
                 + "\n".join(f"  - {i}" for i in issues)
                 + f"\n\nBitte manuell pruefen.\n\nGrueße, Auto-Bot"
             )
-            send_email(f"Plan-Update {datum} – Fehler", body)
-            print("Fehler beim Update! E-Mail gesendet.")
+            send_whatsapp(
+                f"Hi Noah, Cloude hier 🚨\n\n"
+                f"Beim automatischen Update des Trainingsplans für {datum} ist ein Fehler aufgetreten:\n\n"
+                + "\n".join(f"• {i}" for i in issues) +
+                f"\n\nBitte kurz manuell prüfen. 🙏"
+            )
+            print("Fehler beim Update! WhatsApp gesendet.")
             sftp.close(); ssh.close()
             return
 
@@ -759,47 +766,40 @@ def main():
                 f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
                 for a in anmerkungen_server if a.get("notiz","").strip()
             )
-            send_email(
-                f"Trainer-Anmerkung fuer {datum} – bitte pruefen",
-                f"Hallo Noah,\n\n"
-                f"Es liegt eine neue Trainer-Anmerkung fuer das Training {wtag}, {datum} vor:\n\n"
+            send_whatsapp(
+                f"Hi Noah, Cloude hier 📋\n\n"
+                f"Neue Trainer-Anmerkung für {wtag}, {datum} wurde eingebaut:\n\n"
                 f"{anm_lines}\n\n"
-                f"Die Anmerkung wurde bereits in den Plan eingebaut und hochgeladen.\n"
-                f"Bitte prüfe, ob alles korrekt eingetragen ist.\n\nGrueße, Auto-Bot",
-                to="turntrainernoah@gmail.com"
+                f"Bitte kurz prüfen ob alles stimmt ✅"
             )
 
         # Notification: Verspätungen / frühes Gehen → nur NEUE Hinweise
         if new_late_notes:
-            send_email(
-                f"Verspätung/Frühes Gehen fuer {datum} – bitte pruefen",
-                f"Hallo Noah,\n\n"
-                f"Fuer das Training {wtag}, {datum} gibt es folgende NEUE Hinweise:\n\n"
-                + "\n".join(f"  {n}" for n in new_late_notes) +
-                f"\n\nDiese wurden im Plan als Hinweis eingetragen.\n\nGrueße, Auto-Bot",
-                to="turntrainernoah@gmail.com"
+            send_whatsapp(
+                f"Hi Noah, Cloude hier ⏰\n\n"
+                f"Neue Verspätungs-/Frühgeh-Hinweise für {wtag}, {datum}:\n\n"
+                + "\n".join(f"{n}" for n in new_late_notes) +
+                f"\n\nSind im Plan eingetragen."
             )
 
-        # Zusammenfassung E-Mail
+        # Zusammenfassung WhatsApp
         anm_text = ""
         if anmerkungen_server:
-            anm_text = f"\nEingebaute Trainer-Anmerkungen:\n" + "\n".join(
-                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+            anm_text = f"\nAnmerkungen:\n" + "\n".join(
+                f"• {a.get('trainer','')}: {a.get('notiz','').strip()}"
                 for a in anmerkungen_server if a.get("notiz","").strip()
             ) + "\n"
-        send_email(
-            f"Plan {datum} aktualisiert",
-            f"Hallo Noah,\n\n"
-            f"der Trainingsplan fuer {wtag}, {datum} wurde automatisch aktualisiert.\n\n"
-            f"Geraete: {geraet_1} + {geraet_2}\n\n"
+        send_whatsapp(
+            f"Hi Noah, Cloude hier ✅\n\n"
+            f"Trainingsplan für {wtag}, {datum} wurde aktualisiert.\n\n"
+            f"Geräte: {geraet_1} + {geraet_2}\n"
             f"Abwesend:\n"
             f"  Trainer: {', '.join(absences.get('Trainer','')) or 'Alle da'}\n"
             f"  G1: {', '.join(absences.get('G1','')) or 'Alle da'}\n"
             f"  G2: {', '.join(absences.get('G2','')) or 'Alle da'}\n"
             f"  G3: {', '.join(absences.get('G3','')) or 'Alle da'}\n"
-            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}\n"
-            f"{anm_text}\n"
-            f"Grueße, Auto-Bot"
+            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}"
+            f"{anm_text}"
         )
         print(f"UPDATE FERTIG fuer {datum}.")
 
@@ -825,19 +825,16 @@ def main():
         issues, anwesend_trainer = detect_complex(absences, late_notes)
 
         if issues:
-            body = (
-                f"Hallo Noah,\n\n"
-                f"der automatische Trainingsplan fuer {wtag}, {datum} "
-                f"konnte nicht erstellt werden.\n\n"
-                f"Geraete (geplant): {geraet_1} + {geraet_2}\n\n"
+            send_whatsapp(
+                f"Hi Noah, Cloude hier 🚨\n\n"
+                f"Den Trainingsplan für {wtag}, {datum} konnte ich leider nicht automatisch erstellen.\n\n"
                 f"Probleme:\n" +
-                "\n".join(f"  - {i}" for i in issues) +
+                "\n".join(f"• {i}" for i in issues) +
                 f"\n\nAnwesende Trainer: {', '.join(anwesend_trainer) or '–'}\n"
-                f"Abwesend Trainer: {', '.join(absences.get('Trainer', [])) or '–'}\n\n"
-                f"Bitte oeffne Claude und erstelle den Plan manuell.\n\nGrueße, Auto-Bot"
+                f"Abwesend: {', '.join(absences.get('Trainer', [])) or '–'}\n\n"
+                f"Bitte kurz manuell in Claude erstellen. 🙏"
             )
-            send_email(f"Trainingsplan {datum} – manuelle Pruefung noetig", body)
-            print("Komplex! E-Mail gesendet.")
+            print("Komplex! WhatsApp gesendet.")
             sftp.close(); ssh.close()
             return
 
@@ -892,50 +889,43 @@ def main():
         # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen
         if anmerkungen_server:
             anm_lines = "\n".join(
-                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+                f"• {a.get('trainer','')}: {a.get('notiz','').strip()}"
                 for a in anmerkungen_server if a.get("notiz","").strip()
             )
-            send_email(
-                f"Trainer-Anmerkung fuer {datum} – bitte pruefen",
-                f"Hallo Noah,\n\n"
-                f"Es liegt eine neue Trainer-Anmerkung fuer das Training {wtag}, {datum} vor:\n\n"
+            send_whatsapp(
+                f"Hi Noah, Cloude hier 📋\n\n"
+                f"Neue Trainer-Anmerkung für {wtag}, {datum} wurde eingebaut:\n\n"
                 f"{anm_lines}\n\n"
-                f"Die Anmerkung wurde bereits in den Plan eingebaut und hochgeladen.\n"
-                f"Bitte prüfe, ob alles korrekt eingetragen ist.\n\nGrueße, Auto-Bot",
-                to="turntrainernoah@gmail.com"
+                f"Bitte kurz prüfen ob alles stimmt ✅"
             )
 
         # Notification: Verspätungen / frühes Gehen → bitte prüfen
         if late_notes:
-            send_email(
-                f"Verspätung/Frühes Gehen fuer {datum} – bitte pruefen",
-                f"Hallo Noah,\n\n"
-                f"Fuer das Training {wtag}, {datum} gibt es folgende Hinweise:\n\n"
-                + "\n".join(f"  {n}" for n in late_notes) +
-                f"\n\nDiese wurden im Plan als Hinweis eingetragen.\n\nGrueße, Auto-Bot",
-                to="turntrainernoah@gmail.com"
+            send_whatsapp(
+                f"Hi Noah, Cloude hier ⏰\n\n"
+                f"Verspätungs-/Frühgeh-Hinweise für {wtag}, {datum}:\n\n"
+                + "\n".join(f"{n}" for n in late_notes) +
+                f"\n\nSind im Plan eingetragen."
             )
 
         anm_text = ""
         if anmerkungen_server:
-            anm_text = f"\nEingebaute Trainer-Anmerkungen:\n" + "\n".join(
-                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
+            anm_text = f"\nAnmerkungen:\n" + "\n".join(
+                f"• {a.get('trainer','')}: {a.get('notiz','').strip()}"
                 for a in anmerkungen_server if a.get("notiz","").strip()
             ) + "\n"
-        send_email(
-            f"Trainingsplan {datum} automatisch erstellt",
-            f"Hallo Noah,\n\n"
-            f"der Trainingsplan fuer {wtag}, {datum} wurde automatisch erstellt und hochgeladen.\n\n"
-            f"Geraete: {geraet_1} + {geraet_2}\n\n"
+        send_whatsapp(
+            f"Hi Noah, Cloude hier 🎉\n\n"
+            f"Trainingsplan für {wtag}, {datum} ist fertig und auf der Website!\n\n"
+            f"Geräte: {geraet_1} + {geraet_2}\n"
             f"Abwesend:\n"
             f"  Trainer: {', '.join(absences.get('Trainer','')) or 'Alle da'}\n"
             f"  G1: {', '.join(absences.get('G1','')) or 'Alle da'}\n"
             f"  G2: {', '.join(absences.get('G2','')) or 'Alle da'}\n"
             f"  G3: {', '.join(absences.get('G3','')) or 'Alle da'}\n"
-            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}\n"
-            f"{anm_text}\n"
-            f"Der Plan ist jetzt auf der Website.\n"
-            f"Falls etwas nicht stimmt, oeffne Claude.\n\nGrueße, Auto-Bot"
+            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}"
+            f"{anm_text}"
+            f"\ntv-rheinzabern.e-websolutions.de"
         )
         print(f"FERTIG! Plan fuer {datum} hochgeladen.")
 
