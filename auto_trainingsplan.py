@@ -25,12 +25,30 @@ from openpyxl.styles import PatternFill, Font, Alignment
 # ════════════════════════════════════════════════════════════════
 
 ALLE_TURNER = {
-    "G1": ["Felix G1", "Finn G1", "Sinan", "Ilyas", "Jonathan", "Hannes", "Ben G1"],
-    "G2": ["Henry", "Matti", "Levent", "Caius"],
-    "G3": ["Erik", "Artem", "Finn G3", "Ben G3", "Michael"],
-    "G4": ["Felix G4", "Anton", "Mika", "Jamie"],
+    "G1": ["Felix E.", "Finn M.", "Sinan Y.", "Ilyas E.", "Jonathan S.", "Hannes G.", "Ben B."],
+    "G2": ["Henry K.", "Matti G.", "Levent K.", "Caius C."],
+    "G3": ["Erik E.", "Artem T.", "Finn T.", "Ben F.", "Michael K."],
+    "G4": ["Felix L.", "Anton K.", "Mika W.", "Jamie G."],
 }
-ALLE_TRAINER = ["Noah", "Andy", "Fabian", "Cassian", "Julian", "Torben"]
+ALLE_TRAINER = ["Noah W.", "Andy K.", "Fabian G.", "Cassian P.", "Julian K.", "Torben W."]
+
+# Mapping: Website-Format (nach normalize) → Anzeigename
+WEBSITE_TO_DISPLAY = {
+    # G1
+    "Felix G1": "Felix E.", "Finn G1": "Finn M.", "Sinan": "Sinan Y.",
+    "Ilyas": "Ilyas E.", "Jonathan": "Jonathan S.", "Hannes": "Hannes G.",
+    "Ben G1": "Ben B.",
+    # G2
+    "Henry": "Henry K.", "Matti": "Matti G.", "Levent": "Levent K.", "Caius": "Caius C.",
+    # G3
+    "Erik": "Erik E.", "Artem": "Artem T.", "Finn G3": "Finn T.",
+    "Ben G3": "Ben F.", "Michael": "Michael K.",
+    # G4
+    "Felix G4": "Felix L.", "Anton": "Anton K.", "Mika": "Mika W.", "Jamie": "Jamie G.",
+    # Trainer
+    "Noah": "Noah W.", "Andy": "Andy K.", "Fabian": "Fabian G.",
+    "Cassian": "Cassian P.", "Julian": "Julian K.", "Torben": "Torben W.",
+}
 
 GERAETE_ROTATION = [
     ("Boden", "Barren"),
@@ -154,7 +172,11 @@ def plan_exists(sftp, datum_kurz):
         return False
 
 def normalize_name(name):
-    return re.sub(r'\s*\(G(\d+)\)$', r' G\1', name.strip())
+    """Website-Format → interner Anzeigename (z.B. 'Felix (G1)' → 'Felix E.')."""
+    # Schritt 1: "(G1)" Suffix entfernen → "Felix G1"
+    intermediate = re.sub(r'\s*\(G(\d+)\)$', r' G\1', name.strip())
+    # Schritt 2: Mapping auf neues Anzeigeformat
+    return WEBSITE_TO_DISPLAY.get(intermediate, WEBSITE_TO_DISPLAY.get(name.strip(), intermediate))
 
 def read_abmeldungen(sftp):
     f    = sftp.open("abmeldungen/abmeldungen.json", "r")
@@ -201,6 +223,37 @@ def upload_xlsx(sftp, local_path, datum_kurz):
     remote = f"trainingspläne/{datum_kurz}_Trainingsplan.xlsx"
     sftp.put(local_path, remote)
     print(f"[OK] Hochgeladen: {remote}")
+
+def build_aktuell_json(datum, datum_kurz, wochentag, geraet_1, geraet_2, trainer_plan, abwesend):
+    """Erstellt trainingsplan_aktuell.json für iOS Widgets."""
+    tag, monat, jahr = datum.split(".")
+    datum_iso = f"{jahr}-{monat}-{tag}"
+    pdf_url = f"https://tv-rheinzabern.e-websolutions.de/trainingspläne/{datum_kurz}_Trainingsplan.pdf"
+    einteilung = {}
+    for trainer, plan in trainer_plan.items():
+        if plan is None:
+            continue
+        if trainer in abwesend.get("Trainer", []):
+            continue
+        slots = []
+        for slot_idx, slot_time in enumerate(ZEITSLOTS):
+            if slot_idx < len(plan):
+                text, _ = plan[slot_idx]
+                slots.append({"zeit_start": slot_time.split("–")[0], "aufgabe": text})
+        einteilung[trainer] = slots
+    return {
+        "datum": datum, "datum_iso": datum_iso, "wochentag": wochentag,
+        "geraet1": geraet_1, "geraet2": geraet_2, "pdf_url": pdf_url,
+        "einteilung": einteilung,
+    }
+
+def upload_aktuell_json(sftp, json_data):
+    """Lädt trainingsplan_aktuell.json auf Server hoch (für iOS Widgets)."""
+    data = json.dumps(json_data, indent=2, ensure_ascii=False).encode("utf-8")
+    f = sftp.open("trainingspläne/trainingsplan_aktuell.json", "wb")
+    f.write(data)
+    f.close()
+    print("[OK] Hochgeladen: trainingspläne/trainingsplan_aktuell.json")
 
 # ════════════════════════════════════════════════════════════════
 #  ABWESENHEITEN AUSWERTEN
@@ -545,15 +598,6 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
                 FARBEN["anmerkung"], font(size=9, color="1A5276"), align(h="left"))
             row += 1
 
-    # Zurück zur Website
-    row += 1
-    ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
-    lc = ws.cell(row=row, column=2, value="Zurück zur Website: tv-rheinzabern.e-websolutions.de")
-    lc.hyperlink = "https://tv-rheinzabern.e-websolutions.de/"
-    lc.font = Font(name="Arial", size=9, color="0563C1", underline="single")
-    lc.alignment = Alignment(horizontal="center", vertical="center")
-    ws.row_dimensions[row].height = 16
-
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToPage   = True
     ws.page_setup.fitToWidth  = 1
@@ -635,6 +679,12 @@ def main():
     new_hash = raw_abm_hash
 
     if plan_exists(sftp, datum_kurz):
+        # ── Geschützter Plan → nie überschreiben ───────────────
+        if datum_kurz in state.get("protected_plans", []):
+            print(f"Plan {datum_kurz} ist als geschützt markiert – wird nicht überschrieben.")
+            sftp.close(); ssh.close()
+            return
+
         # ── Plan vorhanden: prüfe ob Update nötig ──────────────
         plan_data   = state.get("plan_data", {}).get(datum_kurz, {})
         stored_hash = plan_data.get("absences_hash", "")
@@ -752,6 +802,8 @@ def main():
         )
         upload_pdf(sftp, pdf_path, datum_kurz)
         upload_xlsx(sftp, xlsx_path, datum_kurz)
+        aktuell_json = build_aktuell_json(datum, datum_kurz, wtag, geraet_1, geraet_2, trainer_plan, absences)
+        upload_aktuell_json(sftp, aktuell_json)
 
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
         mark_anmerkungen_gelesen(sftp, ids_gelesen)
@@ -871,6 +923,8 @@ def main():
 
         upload_pdf(sftp, pdf_path, datum_kurz)
         upload_xlsx(sftp, xlsx_path, datum_kurz)
+        aktuell_json = build_aktuell_json(datum, datum_kurz, wtag, geraet_1, geraet_2, trainer_plan, absences)
+        upload_aktuell_json(sftp, aktuell_json)
 
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
         mark_anmerkungen_gelesen(sftp, ids_gelesen)
