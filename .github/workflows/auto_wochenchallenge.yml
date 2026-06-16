@@ -38,4 +38,6 @@ jobs:
           SSH_PORT:           ${{ secrets.SSH_PORT }}
           WHATSAPP_PHONE:     ${{ secrets.WHATSAPP_PHONE }}
           CALLMEBOT_APIKEY:   ${{ secrets.CALLMEBOT_APIKEY }}
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python auto_wochenchallenge.py
