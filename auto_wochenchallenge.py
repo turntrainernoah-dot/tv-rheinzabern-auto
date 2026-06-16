@@ -19,7 +19,7 @@ Bsp:  13.6 Felix G1
       15.6 Sinan 💪
 """
 
-import json, os, re, sys, imaplib, subprocess, urllib.request, urllib.parse
+import json, os, re, sys, imaplib, subprocess, urllib.request, urllib.parse, hashlib
 from datetime import date, timedelta, datetime
 import email as email_lib
 from email.header import decode_header
@@ -552,11 +552,27 @@ def main():
 
     print(f"\nWoche: {start_datum} – {end_datum} (ab {week_start_short})")
 
+    # E-Mail-Hash berechnen (um neue Inhalte bei gleicher Woche zu erkennen)
+    email_hash = hashlib.md5(body.encode("utf-8")).hexdigest()
+
     # Schon verarbeitet?
-    if wc_state.get("last_processed_week_start") == week_start_short:
-        print(f"Woche {week_start_short} wurde bereits verarbeitet. Fertig.")
+    last_week = wc_state.get("last_processed_week_start")
+    last_hash = wc_state.get("last_email_hash", "")
+
+    if last_week == week_start_short and email_hash == last_hash:
+        print(f"Woche {week_start_short} + E-Mail-Hash unverändert. Fertig.")
         sftp.close(); ssh.close()
         return
+    elif last_week == week_start_short:
+        print(f"[INFO] Neue E-Mail für bereits verarbeitete Woche {week_start_short} → Aktualisiere WC-Liste...")
+        # Alte Dateien auf Server löschen (werden gleich überschrieben, aber explizit löschen für sauberen State)
+        for ext in ["pdf", "xlsx"]:
+            old_remote = f"wochen-challenge/ab_{week_start_short}_Wochenchallenge.{ext}"
+            try:
+                sftp.remove(old_remote)
+                print(f"  Gelöscht: {old_remote}")
+            except Exception:
+                pass  # Datei existierte noch nicht
 
     # GRUPPEN-Dict aufbauen
     gruppen = build_gruppen(entries, week_start, num_days)
@@ -658,6 +674,7 @@ def main():
             all_vorpunkte[key] = old + len(tage)
 
     wc_state["last_processed_week_start"] = week_start_short
+    wc_state["last_email_hash"]           = email_hash   # NEU: E-Mail-Hash speichern
     wc_state["alle_vorpunkte"]            = all_vorpunkte
     wc_state["use_friday_start"]          = False  # nach Verarbeitung immer zurücksetzen
     save_wc_state(sftp, wc_state)
