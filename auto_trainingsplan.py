@@ -196,6 +196,32 @@ def read_anmerkungen_server(sftp):
     except Exception:
         return []
 
+def read_fixed_entries(sftp):
+    """Liest fixed_entries.json vom Server (falls vorhanden).
+    Struktur: { "DD.MM.JJ": { "lock_trainer_plan": bool,
+                               "fixed_absences": { "Gruppe": ["Name", ...] },
+                               "fixed_trainer_plan": { "Trainer": [[text,farbe],...] } } }
+    """
+    try:
+        f    = sftp.open("fixed_entries.json", "r")
+        data = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+        print(f"[FIXED] fixed_entries.json geladen: {list(data.keys())}")
+        return data
+    except Exception:
+        return {}
+
+def apply_fixed_absences(absences, fixed_entry):
+    """Merged fixed_absences in die berechneten Abwesenheiten (addiert, entfernt nichts)."""
+    for gruppe, namen in fixed_entry.get("fixed_absences", {}).items():
+        existing = absences.get(gruppe, [])
+        for name in namen:
+            if name not in existing:
+                existing.append(name)
+                print(f"[FIXED] {name} ({gruppe}) als fix-abwesend hinzugefügt.")
+        absences[gruppe] = existing
+    return absences
+
 def mark_anmerkungen_gelesen(sftp, ids_to_mark):
     """Markiert angegebene Anmerkungen als gelesen auf dem Server."""
     if not ids_to_mark:
@@ -668,6 +694,7 @@ def main():
     state              = load_state(sftp)
     abmeldungen, raw_abm_hash = read_abmeldungen(sftp)
     anmerkungen_server = read_anmerkungen_server(sftp)
+    fixed_entries      = read_fixed_entries(sftp)
     print(f"Abmeldungen geladen: {len(abmeldungen)} Eintraege")
     print(f"Ungelesene Anmerkungen: {len(anmerkungen_server)}")
     print(f"Abmeldungen-Hash (raw): {raw_abm_hash[:8]}...")
@@ -685,6 +712,15 @@ def main():
     absences, late_notes = get_absences(abmeldungen, training_date)
     # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
     new_hash = raw_abm_hash
+
+    # Fixed entries anwenden (erzwingt Abwesenheiten, die das Auto-System nicht ändern darf)
+    fixed_for_date = fixed_entries.get(datum_kurz, {})
+    lock_trainer   = fixed_for_date.get("lock_trainer_plan", False)
+    fixed_tp_raw   = fixed_for_date.get("fixed_trainer_plan")  # vorberechneter Trainer-Plan
+    if fixed_for_date:
+        absences = apply_fixed_absences(absences, fixed_for_date)
+        if lock_trainer:
+            print(f"[FIXED] Trainer-Plan für {datum_kurz} ist gesperrt – Auto-Berechnung deaktiviert.")
 
     if plan_exists(sftp, datum_kurz):
         # ── Geschützter Plan → nie überschreiben ───────────────
@@ -734,8 +770,16 @@ def main():
         # Trainer-Absences prüfen
         stored_trainer_abs = set(plan_data.get("trainer_absences", []))
         new_trainer_abs    = set(absences.get("Trainer", []))
+        fixed_trainer_abs  = set(fixed_for_date.get("fixed_absences", {}).get("Trainer", []))
 
-        if stored_trainer_abs != new_trainer_abs:
+        # Trainer-Änderung ignorieren wenn der Plan gesperrt ist (lock_trainer_plan)
+        trainer_changed = (stored_trainer_abs != new_trainer_abs)
+        if trainer_changed and lock_trainer:
+            print(f"[FIXED] Trainer-Änderung ignoriert (Plan gesperrt): "
+                  f"{stored_trainer_abs} → {new_trainer_abs}")
+            trainer_changed = False
+
+        if trainer_changed:
             added   = new_trainer_abs - stored_trainer_abs
             removed = stored_trainer_abs - new_trainer_abs
             body = (
@@ -769,6 +813,9 @@ def main():
         g1_starts_g2 = plan_data["g1_starts_geraet2"]
 
         issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
+        # Bei gesperrtem Trainer-Plan: Trainer-Anzahl-Fehler ignorieren
+        if lock_trainer:
+            issues = [i for i in issues if "Trainer anwesend" not in i]
         if issues:
             body = (
                 f"Hallo Noah,\n\nKonnte Plan fuer {datum} nicht aktualisieren:\n\n"
@@ -785,9 +832,21 @@ def main():
             sftp.close(); ssh.close()
             return
 
-        trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-            absences, geraet_1, geraet_2, g1_starts_g2
-        )
+        if lock_trainer and fixed_tp_raw:
+            # Gesperrter Trainer-Plan: direkt aus fixed_entries (UPDATE path)
+            trainer_plan = {
+                k: [tuple(s) for s in v] if v is not None else None
+                for k, v in fixed_tp_raw.items()
+            }
+            sondertiming = {}
+            anmerkungen  = []
+            if "Barren" in (geraet_1, geraet_2):
+                anmerkungen.append("• Barren G3: Kippe üben")
+            print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (UPDATE).")
+        else:
+            trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
+                absences, geraet_1, geraet_2, g1_starts_g2
+            )
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
         for note in late_notes:
@@ -887,7 +946,17 @@ def main():
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
         g1_starts_g2 = not state.get("g1_starts_geraet2", True)
 
+        # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
+        if lock_trainer and fixed_for_date.get("geraet_1"):
+            geraet_1     = fixed_for_date["geraet_1"]
+            geraet_2     = fixed_for_date["geraet_2"]
+            g1_starts_g2 = fixed_for_date.get("g1_starts_geraet2", g1_starts_g2)
+            print(f"[FIXED] Geräte aus fixed_entries: {geraet_1} + {geraet_2}, G1 starts G2: {g1_starts_g2}")
+
         issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
+        # Bei gesperrtem Trainer-Plan: Trainer-Anzahl-Fehler ignorieren (NEW path)
+        if lock_trainer:
+            issues = [i for i in issues if "Trainer anwesend" not in i]
 
         if issues:
             send_whatsapp(
@@ -903,9 +972,21 @@ def main():
             sftp.close(); ssh.close()
             return
 
-        trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-            absences, geraet_1, geraet_2, g1_starts_g2
-        )
+        if lock_trainer and fixed_tp_raw:
+            # Gesperrter Trainer-Plan: direkt aus fixed_entries (NEW path)
+            trainer_plan = {
+                k: [tuple(s) for s in v] if v is not None else None
+                for k, v in fixed_tp_raw.items()
+            }
+            sondertiming = {}
+            anmerkungen  = []
+            if "Barren" in (geraet_1, geraet_2):
+                anmerkungen.append("• Barren G3: Kippe üben")
+            print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (NEW).")
+        else:
+            trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
+                absences, geraet_1, geraet_2, g1_starts_g2
+            )
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
         for note in late_notes:
