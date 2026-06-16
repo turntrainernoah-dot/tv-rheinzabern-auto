@@ -333,15 +333,22 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
     assignment = {}
     pool = list(available)
 
-    if "Noah" in pool:
-        assignment["Noah"] = "G1"
-        pool.remove("Noah")
+    # Suche nach Vorname (robust gegen Namensformat-Änderungen)
+    def pop_by_first(lst, first_name):
+        for i, t in enumerate(lst):
+            if t.startswith(first_name):
+                return lst.pop(i)
+        return None
+
+    noah = pop_by_first(pool, "Noah")
+    if noah:
+        assignment[noah] = "G1"
     else:
         assignment[pool.pop(0)] = "G1"
 
-    if "Andy" in pool:
-        g4_trainer = "Andy"
-        pool.remove("Andy")
+    andy = pop_by_first(pool, "Andy")
+    if andy:
+        g4_trainer = andy
     elif pool:
         g4_trainer = pool.pop(-1)
     else:
@@ -439,9 +446,10 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
                 ("Abbauen",  "aufbauen"),
             ]
 
-    if "Andy" in available and assignment.get("Andy") == "Springer":
-        if TRAINER_PLAN.get("Andy"):
-            TRAINER_PLAN["Andy"][4] = ("G4", G4_SLOT4)
+    andy_full = next((t for t in available if t.startswith("Andy")), None)
+    if andy_full and assignment.get(andy_full) == "Springer":
+        if TRAINER_PLAN.get(andy_full):
+            TRAINER_PLAN[andy_full][4] = ("G4", G4_SLOT4)
 
     anmerkungen = []
     if "Barren" in (geraet_1, geraet_2):
