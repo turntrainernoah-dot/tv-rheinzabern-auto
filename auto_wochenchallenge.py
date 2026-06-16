@@ -47,50 +47,114 @@ CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 # ════════════════════════════════════════════════════════════════
 
 NAME_MAP = {
-    # G1
-    "felix g1":   ("G1", "Felix"),
-    "finn g1":    ("G1", "Finn"),
-    "sinan":      ("G1", "Sinan"),
-    "ilyas":      ("G1", "Ilyas"),
-    "jonathan":   ("G1", "Jonathan"),
-    "hannes":     ("G1", "Hannes"),
-    "ben g1":     ("G1", "Ben G1"),
-    # G2
-    "henry":      ("G2", "Henry"),
-    "matti":      ("G2", "Matti"),
-    "levent":     ("G2", "Levent"),
-    "caius":      ("G2", "Caius"),
-    # G3
-    "artem":      ("G3", "Artem"),
-    "finn g3":    ("G3", "Finn"),
-    "ben g3":     ("G3", "Ben G3"),
-    "erik":       ("G3", "Erik"),
-    "michael":    ("G3", "Michael"),
-    # G4
-    "felix g4":   ("G4", "Felix"),
-    "mika":       ("G4", "Mika"),
-    "anton":      ("G4", "Anton"),
-    "jamie":      ("G4", "Jamie"),
+    # ── G1 ──────────────────────────────────────────────────────
+    # Felix E. – alle Schreibweisen
+    "felix g1":      ("G1", "Felix E."),
+    "felix e.":      ("G1", "Felix E."),
+    "felix e":       ("G1", "Felix E."),
+    # Finn M. – alle Schreibweisen
+    "finn g1":       ("G1", "Finn M."),
+    "finn klein":    ("G1", "Finn M."),
+    "finn m.":       ("G1", "Finn M."),
+    "finn m":        ("G1", "Finn M."),
+    # Sinan Y.
+    "sinan":         ("G1", "Sinan Y."),
+    "sinan y.":      ("G1", "Sinan Y."),
+    "sinan y":       ("G1", "Sinan Y."),
+    # Ilyas E.
+    "ilyas":         ("G1", "Ilyas E."),
+    "ilyas e.":      ("G1", "Ilyas E."),
+    "ilyas e":       ("G1", "Ilyas E."),
+    # Jonathan S.
+    "jonathan":      ("G1", "Jonathan S."),
+    "jonathan s.":   ("G1", "Jonathan S."),
+    "jonathan s":    ("G1", "Jonathan S."),
+    # Hannes G.
+    "hannes":        ("G1", "Hannes G."),
+    "hannes g.":     ("G1", "Hannes G."),
+    "hannes g":      ("G1", "Hannes G."),
+    # Ben B.
+    "ben g1":        ("G1", "Ben B."),
+    "ben klein":     ("G1", "Ben B."),
+    "ben baron":     ("G1", "Ben B."),
+    "ben b.":        ("G1", "Ben B."),
+    "ben b":         ("G1", "Ben B."),
+    # ── G2 ──────────────────────────────────────────────────────
+    "henry":         ("G2", "Henry K."),
+    "henry k.":      ("G2", "Henry K."),
+    "henry k":       ("G2", "Henry K."),
+    "matti":         ("G2", "Matti G."),
+    "matti g.":      ("G2", "Matti G."),
+    "matti g":       ("G2", "Matti G."),
+    "levent":        ("G2", "Levent K."),
+    "levent k.":     ("G2", "Levent K."),
+    "levent k":      ("G2", "Levent K."),
+    "caius":         ("G2", "Caius C."),
+    "caius c.":      ("G2", "Caius C."),
+    "caius c":       ("G2", "Caius C."),
+    # ── G3 ──────────────────────────────────────────────────────
+    # Erik E.
+    "erik":          ("G3", "Erik E."),
+    "erik e.":       ("G3", "Erik E."),
+    "erik e":        ("G3", "Erik E."),
+    # Artem T.
+    "artem":         ("G3", "Artem T."),
+    "artem t.":      ("G3", "Artem T."),
+    "artem t":       ("G3", "Artem T."),
+    # Finn T.
+    "finn g3":       ("G3", "Finn T."),
+    "finn gross":    ("G3", "Finn T."),
+    "finn gro\xdf":  ("G3", "Finn T."),  # "finn groß"
+    "finn t.":       ("G3", "Finn T."),
+    "finn t":        ("G3", "Finn T."),
+    # Ben F.
+    "ben g3":        ("G3", "Ben F."),
+    "ben gross":     ("G3", "Ben F."),
+    "ben gro\xdf":   ("G3", "Ben F."),   # "ben groß"
+    "ben f.":        ("G3", "Ben F."),
+    "ben f":         ("G3", "Ben F."),
+    # Michael K.
+    "michael":       ("G3", "Michael K."),
+    "michael k.":    ("G3", "Michael K."),
+    "michael k":     ("G3", "Michael K."),
+    # ── G4 ──────────────────────────────────────────────────────
+    # Felix L.
+    "felix g4":      ("G4", "Felix L."),
+    "felix l.":      ("G4", "Felix L."),
+    "felix l":       ("G4", "Felix L."),
+    # Anton K.
+    "anton":         ("G4", "Anton K."),
+    "anton k.":      ("G4", "Anton K."),
+    "anton k":       ("G4", "Anton K."),
+    # Mika W.
+    "mika":          ("G4", "Mika W."),
+    "mika w.":       ("G4", "Mika W."),
+    "mika w":        ("G4", "Mika W."),
+    "mika werling":  ("G4", "Mika W."),
+    # Jamie G.
+    "jamie":         ("G4", "Jamie G."),
+    "jamie g.":      ("G4", "Jamie G."),
+    "jamie g":       ("G4", "Jamie G."),
 }
 
 # Mehrdeutige Namen (brauchen Gruppenangabe)
 AMBIGUOUS_NAMES = {"felix", "finn", "ben"}
 
-# Alle Namen in der richtigen Reihenfolge für den WC-Script
+# Alle Namen in der richtigen Reihenfolge für den WC-Script (neues Format)
 WC_GRUPPEN_TEMPLATE = {
-    "G1": ["Felix", "Finn", "Sinan", "Ilyas", "Jonathan", "Hannes", "Ben G1"],
-    "G2": ["Henry", "Matti", "Levent", "Caius"],
-    "G3": ["Artem", "Finn", "Ben G3", "Erik", "Michael"],
-    "G4": ["Felix", "Mika", "Anton", "Jamie"],
+    "G1": ["Felix E.", "Finn M.", "Sinan Y.", "Ilyas E.", "Jonathan S.", "Hannes G.", "Ben B."],
+    "G2": ["Henry K.", "Matti G.", "Levent K.", "Caius C."],
+    "G3": ["Erik E.", "Artem T.", "Finn T.", "Ben F.", "Michael K."],
+    "G4": ["Felix L.", "Anton K.", "Mika W.", "Jamie G."],
 }
 
-# Initiale Vorpunkte (Stand nach Woche 06.06–09.06.2026)
+# Initiale Vorpunkte (Stand nach Woche 06.06–09.06.2026, neues Name-Format)
 DEFAULT_VORPUNKTE = {
-    "G1_Felix": 8,   "G1_Finn": 3,  "G1_Sinan": 0,
-    "G1_Ilyas": 8,   "G1_Jonathan": 7, "G1_Hannes": 5, "G1_Ben G1": 4,
-    "G2_Henry": 8,   "G2_Matti": 8,  "G2_Levent": 8, "G2_Caius": 8,
-    "G3_Artem": 2,   "G3_Finn": 4,   "G3_Ben G3": 2, "G3_Erik": 3, "G3_Michael": 3,
-    "G4_Felix": 3,   "G4_Mika": 21,  "G4_Anton": 3,  "G4_Jamie": 0,
+    "G1_Felix E.": 8,    "G1_Finn M.": 3,    "G1_Sinan Y.": 0,
+    "G1_Ilyas E.": 8,    "G1_Jonathan S.": 7, "G1_Hannes G.": 5, "G1_Ben B.": 4,
+    "G2_Henry K.": 8,    "G2_Matti G.": 8,   "G2_Levent K.": 8,  "G2_Caius C.": 8,
+    "G3_Erik E.": 3,     "G3_Artem T.": 2,   "G3_Finn T.": 4,    "G3_Ben F.": 2, "G3_Michael K.": 3,
+    "G4_Felix L.": 3,    "G4_Anton K.": 3,   "G4_Mika W.": 21,   "G4_Jamie G.": 0,
 }
 
 # Wochentag-Mapping (Deutsch → Python weekday, Mo=0 … So=6)
