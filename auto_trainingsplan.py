@@ -137,6 +137,41 @@ def is_publication_window():
     now = datetime.now(timezone.utc)
     return now.weekday() in (2, 4) and now.hour >= 20
 
+def get_gear_from_plan_data(state):
+    """
+    Berechnet den korrekten Geräte-Combo-Index aus plan_data (nicht aus geraet_combo_index).
+    Sucht den neuesten Eintrag in plan_data mit Gerätedaten und leitet den nächsten Index ab.
+    Gibt zurück: (letzter_combo_idx, g1_starts_geraet2, letztes_datum) oder (None, None, None).
+    """
+    plan_data = state.get("plan_data", {})
+    if not plan_data:
+        return None, None, None
+
+    dated_plans = []
+    for datum_kurz, pdata in plan_data.items():
+        if pdata and "geraet_1" in pdata and "geraet_2" in pdata:
+            try:
+                d = datetime.strptime(datum_kurz, "%d.%m.%y").date()
+                dated_plans.append((d, datum_kurz, pdata))
+            except Exception:
+                pass
+
+    if not dated_plans:
+        return None, None, None
+
+    dated_plans.sort(key=lambda x: x[0])
+    latest_date, latest_key, latest = dated_plans[-1]
+
+    g1 = latest.get("geraet_1")
+    g2 = latest.get("geraet_2")
+    for idx, (r1, r2) in enumerate(GERAETE_ROTATION):
+        if r1 == g1 and r2 == g2:
+            print(f"[ROTATION] Letzter Plan: {latest_key} = {g1}+{g2} (Combo {idx}) → nächster: {(idx+1)%3}")
+            return idx, latest.get("g1_starts_geraet2", False), latest_date
+
+    print(f"[ROTATION-WARN] Kombo {g1}+{g2} nicht in GERAETE_ROTATION gefunden – Fallback auf State.")
+    return None, None, None
+
 def next_training_date():
     """Nächster Trainingstag (Mi/Fr) ab morgen."""
     d = date.today() + timedelta(days=1)
@@ -929,22 +964,40 @@ def main():
 
     else:
         # ── Kein Plan vorhanden: erstelle neuen ────────────────
-        # Erlaubt wenn Training ≤5 Tage entfernt (= genug Zeit, aber nicht zu früh)
+        # NUR im Publikationsfenster (Mi oder Fr nach 22:00 CEST / 20:00 UTC) erstellen
         now_utc   = datetime.now(timezone.utc)
         days_away = (training_date - date.today()).days
-        if days_away > 5 and not is_publication_window():
+
+        if not is_publication_window():
+            print(
+                f"Kein Plan vorhanden, aber außerhalb Publikationsfenster "
+                f"({now_utc.strftime('%H:%M')} UTC, Wochentag {now_utc.weekday()}) → warte bis Mi/Fr 22:00 CEST."
+            )
+            sftp.close(); ssh.close()
+            return
+
+        if days_away > 5:
             print(
                 f"Kein Plan vorhanden, Training in {days_away} Tagen "
-                f"({now_utc.strftime('%H:%M')} UTC) → warte noch."
+                f"({now_utc.strftime('%H:%M')} UTC) → noch zu weit entfernt."
             )
             sftp.close(); ssh.close()
             return
 
         print(f"Kein Plan vorhanden, starte Generierung... (Training in {days_away} Tagen, {now_utc.strftime('%H:%M')} UTC)")
 
-        new_combo_idx = (state.get("geraet_combo_index", 2) + 1) % 3
+        # Geräte-Rotation aus plan_data berechnen (robuster als geraet_combo_index)
+        last_idx, last_g1_starts, last_date = get_gear_from_plan_data(state)
+        if last_idx is not None:
+            new_combo_idx = (last_idx + 1) % 3
+            g1_starts_g2  = not last_g1_starts
+            print(f"[ROTATION] Aus plan_data berechnet: letzter Combo {last_idx} → neu {new_combo_idx}")
+        else:
+            new_combo_idx = (state.get("geraet_combo_index", 2) + 1) % 3
+            g1_starts_g2  = not state.get("g1_starts_geraet2", True)
+            print(f"[ROTATION] Fallback auf geraet_combo_index: {new_combo_idx}")
+
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
-        g1_starts_g2 = not state.get("g1_starts_geraet2", True)
 
         # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
         if lock_trainer and fixed_for_date.get("geraet_1"):
@@ -959,16 +1012,25 @@ def main():
             issues = [i for i in issues if "Trainer anwesend" not in i]
 
         if issues:
-            send_whatsapp(
-                f"Hi Noah, Cloude hier 🚨\n\n"
-                f"Den Trainingsplan für {wtag}, {datum} konnte ich leider nicht automatisch erstellen.\n\n"
-                f"Probleme:\n" +
-                "\n".join(f"• {i}" for i in issues) +
-                f"\n\nAnwesende Trainer: {', '.join(anwesend_trainer) or '–'}\n"
-                f"Abwesend: {', '.join(absences.get('Trainer', [])) or '–'}\n\n"
-                f"Bitte kurz manuell in Claude erstellen. 🙏"
-            )
-            print("Komplex! WhatsApp gesendet.")
+            # Dedup: Nur einmal WA senden, nicht bei jedem 30-Min-Run
+            plan_data_current = state.get("plan_data", {}).get(datum_kurz, {})
+            if not plan_data_current.get("complex_warning_sent"):
+                send_whatsapp(
+                    f"Hi Noah, Cloude hier 🚨\n\n"
+                    f"Den Trainingsplan für {wtag}, {datum} konnte ich leider nicht automatisch erstellen.\n\n"
+                    f"Probleme:\n" +
+                    "\n".join(f"• {i}" for i in issues) +
+                    f"\n\nAnwesende Trainer: {', '.join(anwesend_trainer) or '–'}\n"
+                    f"Abwesend: {', '.join(absences.get('Trainer', [])) or '–'}\n\n"
+                    f"Bitte kurz manuell in Claude erstellen. 🙏"
+                )
+                print("Komplex! WhatsApp gesendet.")
+                # Dedup-Flag setzen
+                state.setdefault("plan_data", {})[datum_kurz] = plan_data_current
+                state["plan_data"][datum_kurz]["complex_warning_sent"] = True
+                save_state(sftp, state)
+            else:
+                print(f"Komplexe Situation für {datum_kurz} bereits gemeldet – kein erneutes WA.")
             sftp.close(); ssh.close()
             return
 
