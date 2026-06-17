@@ -179,12 +179,42 @@ def get_sftp():
                    password=SSH_PASSWORD, timeout=20)
     return client, client.open_sftp()
 
+# ════════════════════════════════════════════════════════════════
+#  KEY-MIGRATION: alte Format-Keys → neue Format-Keys
+# ════════════════════════════════════════════════════════════════
+
+OLD_KEY_MAP = {
+    "G1_Felix":   "G1_Felix E.",    "G1_Finn":     "G1_Finn M.",    "G1_Sinan":   "G1_Sinan Y.",
+    "G1_Ilyas":   "G1_Ilyas E.",    "G1_Jonathan": "G1_Jonathan S.","G1_Hannes":  "G1_Hannes G.",
+    "G1_Ben G1":  "G1_Ben B.",      "G2_Henry":    "G2_Henry K.",   "G2_Matti":   "G2_Matti G.",
+    "G2_Levent":  "G2_Levent K.",   "G2_Caius":    "G2_Caius C.",   "G3_Erik":    "G3_Erik E.",
+    "G3_Artem":   "G3_Artem T.",    "G3_Finn":     "G3_Finn T.",    "G3_Ben G3":  "G3_Ben F.",
+    "G3_Michael": "G3_Michael K.",  "G4_Felix":    "G4_Felix L.",   "G4_Anton":   "G4_Anton K.",
+    "G4_Mika":    "G4_Mika W.",     "G4_Jamie":    "G4_Jamie G.",
+}
+
+def migrate_vorpunkte_keys(alle_vorpunkte):
+    """Migriert alte Vorpunkte-Keys (z.B. 'G1_Felix') zu neuen Keys ('G1_Felix E.')."""
+    migrated = {}
+    changed = 0
+    for key, val in alle_vorpunkte.items():
+        new_key = OLD_KEY_MAP.get(key, key)
+        if new_key != key:
+            changed += 1
+        migrated[new_key] = migrated.get(new_key, 0) + val  # addieren falls doppelter Key
+    if changed > 0:
+        print(f"[MIGRATION] {changed} Vorpunkte-Keys auf neues Format migriert.")
+    return migrated
+
 def load_wc_state(sftp):
     try:
         f     = sftp.open("wc_state_auto.json", "r")
         state = json.loads(f.read().decode("utf-8"))
         f.close()
         print("wc_state_auto.json geladen.")
+        # Alte Keys migrieren falls nötig
+        if state.get("alle_vorpunkte"):
+            state["alle_vorpunkte"] = migrate_vorpunkte_keys(state["alle_vorpunkte"])
         return state
     except Exception:
         print("wc_state_auto.json nicht vorhanden – verwende Default.")
@@ -593,6 +623,17 @@ def main():
     for i, abbr in enumerate(wday_abbr):
         d_str = (week_start + timedelta(days=i)).strftime("%d.%m.")
         tage_header.append(f"{abbr}\n{d_str}")  # echtes Newline
+
+    # abmeldungen.json für Abwesenheits-Rot-Markierung herunterladen
+    abm_local = "/tmp/abmeldungen.json"
+    try:
+        sftp.get("abmeldungen/abmeldungen.json", abm_local)
+        print(f"[OK] abmeldungen.json heruntergeladen → {abm_local}")
+    except Exception as e:
+        print(f"[WARN] abmeldungen.json konnte nicht geladen werden: {e} → keine Abwesenheitsmarkierung")
+        # Leere Datei erstellen damit _load_abwesend() nicht abstürzt
+        with open(abm_local, "w", encoding="utf-8") as fj:
+            fj.write("[]")
 
     # Template laden und CONFIG ersetzen
     template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
