@@ -96,22 +96,58 @@ C_INSG_BG     = "FFF3E0"
 # ===================================================================
 
 def _load_abwesend():
+    """
+    Lädt Abwesenheiten für den Mittwoch nach der WC (END_DATUM + 1 Tag).
+    Sucht abmeldungen.json zuerst im Skript-Verzeichnis, dann unter /tmp/.
+    Normalisiert Namen aus altem Format (Sinan → Sinan Y.) auf neues Format.
+    """
+    # Name-Normalisierung: altes Format → neues Format (Vorname N.)
+    NAME_NORMALIZE = {
+        "Sinan":        "Sinan Y.",   "Ilyas":       "Ilyas E.",   "Jonathan":    "Jonathan S.",
+        "Hannes":       "Hannes G.",  "Henry":       "Henry K.",   "Matti":       "Matti G.",
+        "Levent":       "Levent K.",  "Caius":       "Caius C.",   "Erik":        "Erik E.",
+        "Artem":        "Artem T.",   "Michael":     "Michael K.", "Anton":       "Anton K.",
+        "Mika":         "Mika W.",    "Jamie":       "Jamie G.",
+        "Felix (G1)":   "Felix E.",   "Finn (G1)":   "Finn M.",    "Ben (G1)":    "Ben B.",
+        "Ben G1":       "Ben B.",     "Felix G1":    "Felix E.",   "Finn G1":     "Finn M.",
+        "Finn (G3)":    "Finn T.",    "Ben (G3)":    "Ben F.",     "Finn G3":     "Finn T.",
+        "Ben G3":       "Ben F.",     "Felix (G4)":  "Felix L.",   "Felix G4":    "Felix L.",
+    }
+
     end = datetime.strptime(END_DATUM, "%d.%m.%Y")
     check_date = (end + timedelta(days=1)).strftime("%Y-%m-%d")
-    json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "abmeldungen.json")
-    if not os.path.exists(json_path):
-        print(f"[ABWESENHEIT] abmeldungen.json nicht gefunden – leer")
+
+    # Suche abmeldungen.json: erst Skript-Verzeichnis, dann /tmp/
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(script_dir, "abmeldungen.json"),
+        "/tmp/abmeldungen.json",
+    ]
+    json_path = None
+    for p in candidates:
+        if os.path.exists(p):
+            json_path = p
+            break
+
+    if not json_path:
+        print(f"[ABWESENHEIT] abmeldungen.json nicht gefunden – keine Abwesenheitsmarkierung")
         return []
+
     with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
+
     abwesend = []
     for entry in data:
         if entry.get("datum") == check_date and entry.get("gruppe", "").startswith("G"):
-            raw = entry.get("name", "")
-            name = raw.split("(")[0].strip()  # "Felix (G4)" -> "Felix"
+            raw = entry.get("name", "").strip()
+            # Normalisieren: erst Mapping prüfen, dann Klammern entfernen als Fallback
+            name = NAME_NORMALIZE.get(raw, raw)
+            if "(" in name:
+                name = name.split("(")[0].strip()
             if name and name not in abwesend:
                 abwesend.append(name)
-    print(f"[ABWESENHEIT] {check_date}: {abwesend if abwesend else 'keine'}")
+
+    print(f"[ABWESENHEIT] {check_date} (aus {os.path.basename(json_path)}): {abwesend if abwesend else 'keine'}")
     return abwesend
 
 ABWESEND = _load_abwesend()
@@ -250,15 +286,6 @@ def create_xlsx():
     ws.conditional_formatting.add(dr,CellIsRule("between",["3","4"],
         fill=PatternFill("solid",fgColor=C_GREEN),font=Font(name="Arial",color=C_WHITE,bold=True)))
 
-    # Zurück zur Website
-    cur += 2
-    ws.row_dimensions[cur].height = 16
-    ws.merge_cells(f"A{cur}:G{cur}")
-    lc = ws.cell(row=cur, column=1, value="Zurück zur Website: tv-rheinzabern.e-websolutions.de")
-    lc.hyperlink = "https://tv-rheinzabern.e-websolutions.de/"
-    lc.font = Font(name="Arial", size=9, color="0563C1", underline="single")
-    lc.alignment = Alignment(horizontal="center", vertical="center")
-
     ws.sheet_properties.pageSetUpPr.fitToPage=True
     ws.page_setup.fitToHeight=1; ws.page_setup.fitToWidth=1
     wb.save(XLSX_PATH)
@@ -293,8 +320,7 @@ def create_pdf():
           ("FONTSIZE",(0,r),(6,r),8),("ALIGN",(0,r),(6,r),"CENTER"),("VALIGN",(0,r),(6,r),"MIDDLE")]
     r+=1
 
-    def _th(i): return TAGE_HEADER[i] if i < len(TAGE_HEADER) else f"Tag {i+1}"
-    data.append(["Name", _th(0), _th(1), _th(2), _th(3), "Ergebnis","Insgesamt"])
+    data.append(["Name"] + TAGE_HEADER + ["Ergebnis", "Insgesamt"])
     st+=[ ("BACKGROUND",(0,r),(4,r),hx(C_HEADER_TAGE)),
           ("BACKGROUND",(5,r),(5,r),hx(C_HEADER_ERG)),
           ("BACKGROUND",(6,r),(6,r),hx(C_HEADER_INSG)),
