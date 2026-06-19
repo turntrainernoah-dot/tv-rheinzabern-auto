@@ -257,6 +257,90 @@ def apply_fixed_absences(absences, fixed_entry):
         absences[gruppe] = existing
     return absences
 
+# ════════════════════════════════════════════════════════════════
+#  TRAININGSENTFALL (Training abgesagt – von Trainer auf der Website markiert)
+# ════════════════════════════════════════════════════════════════
+
+def read_trainingsentfall(sftp):
+    """Liest /abmeldungen/trainingsentfall.json (Liste von Y-m-d Strings).
+    Single Source of Truth für abgesagte Trainings – wird auf der Website gepflegt."""
+    try:
+        f    = sftp.open("abmeldungen/trainingsentfall.json", "r")
+        data = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+        if isinstance(data, list):
+            dates = [d for d in data if isinstance(d, str) and re.match(r"^\d{4}-\d{2}-\d{2}$", d)]
+            print(f"[ENTFALL] trainingsentfall.json geladen: {dates}")
+            return dates
+    except Exception:
+        pass
+    return []
+
+def build_entfall_pdf(datum, datum_kurz, wochentag):
+    """Erzeugt den minimalen Trainingsentfall-Hinweis (xlsx+pdf), identisch zum
+    manuellen 12.06-Hinweis. Gibt (xlsx_path, pdf_path) zurück."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Trainingsplan"
+    for col in "ABCDEFGHI":
+        ws.column_dimensions[col].width = 13.0
+    ws.merge_cells("B1:H1"); ws.merge_cells("B2:H2"); ws.merge_cells("B3:H3")
+    c = ws["B1"]; c.value = f"TRAININGSPLAN | {wochentag}, {datum}"
+    c.fill = fill("2C3E50"); c.font = font(bold=True, color="FFFFFF", size=14); c.alignment = align()
+    ws.row_dimensions[1].height = 30
+    c = ws["B2"]; c.value = "⚠  TRAININGSENTFALL"
+    c.fill = fill("C0392B"); c.font = font(bold=True, color="FFFFFF", size=22); c.alignment = align()
+    ws.row_dimensions[2].height = 50
+    c = ws["B3"]; c.value = f"Das Training am {datum} ist ausgefallen."
+    c.fill = fill("FAD7A0"); c.font = font(bold=False, color="000000", size=12); c.alignment = align()
+    ws.row_dimensions[3].height = 28
+    ws.page_setup.fitToPage = True
+    ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_area = "A1:I4"
+
+    out_dir = "/tmp/trainingsplan"; os.makedirs(out_dir, exist_ok=True)
+    xlsx_path = os.path.join(out_dir, f"{datum_kurz}_Trainingsplan.xlsx")
+    pdf_path  = os.path.join(out_dir, f"{datum_kurz}_Trainingsplan.pdf")
+    wb.save(xlsx_path)
+    tmp_dir = tempfile.mkdtemp()
+    result  = subprocess.run(
+        ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", tmp_dir, xlsx_path],
+        capture_output=True, text=True, timeout=90)
+    tmp_pdf = os.path.join(tmp_dir, os.path.basename(xlsx_path).replace(".xlsx", ".pdf"))
+    if result.returncode == 0 and os.path.exists(tmp_pdf):
+        shutil.copy2(tmp_pdf, pdf_path)
+    else:
+        raise RuntimeError(f"LibreOffice Fehler (Entfall): {result.stderr[:300]}")
+    return xlsx_path, pdf_path
+
+def publish_entfall(sftp, datum, datum_kurz, wochentag):
+    """Veröffentlicht den Entfall-Hinweis: ersetzt einen evtl. vorhandenen normalen
+    Plan durch den Trainingsentfall-Hinweis und aktualisiert das Widget-JSON."""
+    xlsx_path, pdf_path = build_entfall_pdf(datum, datum_kurz, wochentag)
+    upload_pdf(sftp, pdf_path, datum_kurz)
+    upload_xlsx(sftp, xlsx_path, datum_kurz)
+    tag, monat, jahr = datum.split(".")
+    datum_iso = f"{jahr}-{monat}-{tag}"
+    aktuell = {
+        "datum": datum, "datum_iso": datum_iso, "wochentag": wochentag,
+        "trainingsentfall": True,
+        "pdf_url": f"https://tv-rheinzabern.e-websolutions.de/trainingspläne/{datum_kurz}_Trainingsplan.pdf",
+        "einteilung": {},
+    }
+    upload_aktuell_json(sftp, aktuell)
+    print(f"[ENTFALL] Entfall-Hinweis für {datum} veröffentlicht.")
+
+def remove_plan_files(sftp, datum_kurz):
+    """Entfernt PDF/XLSX eines Plans vom Server (z.B. wenn Entfall aufgehoben wird,
+    damit ein frischer normaler Plan erzeugt wird)."""
+    for ext in ("pdf", "xlsx"):
+        try:
+            sftp.remove(f"trainingspläne/{datum_kurz}_Trainingsplan.{ext}")
+            print(f"[ENTFALL] Entfernt: trainingspläne/{datum_kurz}_Trainingsplan.{ext}")
+        except Exception:
+            pass
+
 def mark_anmerkungen_gelesen(sftp, ids_to_mark):
     """Markiert angegebene Anmerkungen als gelesen auf dem Server."""
     if not ids_to_mark:
@@ -757,6 +841,44 @@ def main():
         if lock_trainer:
             print(f"[FIXED] Trainer-Plan für {datum_kurz} ist gesperrt – Auto-Berechnung deaktiviert.")
 
+    # ── Trainingsentfall-Check (Training wurde auf der Website abgesagt) ──────────
+    # trainingsentfall.json ist die Single Source of Truth. Ist das nächste Training
+    # als Entfall markiert, wird KEIN normaler Plan erzeugt, sondern der Entfall-Hinweis
+    # veröffentlicht. Wird der Entfall wieder aufgehoben, erzeugt das System einen frischen Plan.
+    entfall_list      = read_trainingsentfall(sftp)
+    datum_iso         = training_date.strftime("%Y-%m-%d")
+    entfall_published = state.setdefault("entfall_published", [])
+
+    if datum_iso in entfall_list:
+        if datum_kurz in entfall_published and plan_exists(sftp, datum_kurz):
+            print(f"[ENTFALL] {datum} bereits als Entfall veröffentlicht – nichts zu tun.")
+            sftp.close(); ssh.close()
+            return
+        publish_entfall(sftp, datum, datum_kurz, wtag)
+        if datum_kurz not in entfall_published:
+            entfall_published.append(datum_kurz)
+        if datum_kurz not in state.setdefault("generated_plans", []):
+            state["generated_plans"].append(datum_kurz)
+        state.get("plan_data", {}).pop(datum_kurz, None)  # alten Plan-Hash verwerfen
+        save_state(sftp, state)
+        send_whatsapp(
+            f"Hi Noah, Cloude hier ⚠️\n\n"
+            f"Das Training am {wtag}, {datum} ist als Trainingsentfall markiert.\n"
+            f"Ich habe den Entfall-Hinweis veröffentlicht und erstelle KEINEN normalen Plan."
+        )
+        print(f"[ENTFALL] Entfall für {datum} verarbeitet.")
+        sftp.close(); ssh.close()
+        return
+    elif datum_kurz in entfall_published:
+        # Entfall wurde wieder aufgehoben → Hinweis entfernen, frischen Plan erzeugen
+        print(f"[ENTFALL] Entfall für {datum} aufgehoben → normaler Plan wird neu erstellt.")
+        entfall_published.remove(datum_kurz)
+        remove_plan_files(sftp, datum_kurz)
+        state.get("plan_data", {}).pop(datum_kurz, None)
+        if datum_kurz in state.get("generated_plans", []):
+            state["generated_plans"].remove(datum_kurz)
+        save_state(sftp, state)
+
     if plan_exists(sftp, datum_kurz):
         # ── Geschützter Plan → nie überschreiben ───────────────
         if datum_kurz in state.get("protected_plans", []):
@@ -1156,3 +1278,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+# (Trainingsentfall-Support 19.06.2026)
