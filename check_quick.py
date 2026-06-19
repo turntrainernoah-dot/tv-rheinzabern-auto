@@ -79,6 +79,36 @@ def main():
     except Exception:
         state = {}
 
+    # ── Trainingsentfall-Check (Website ist Single Source of Truth) ────────
+    # Ist das nächste Training abgesagt, muss das Hauptskript genau EINMAL laufen
+    # (um den Entfall-Hinweis zu veröffentlichen) und danach ruhen. Wird der Entfall
+    # wieder aufgehoben, muss das Hauptskript ebenfalls laufen (frischer Plan).
+    entfall_list = []
+    try:
+        f = sftp.open("abmeldungen/trainingsentfall.json", "r")
+        _d = json.loads(f.read().decode("utf-8"))
+        f.close()
+        if isinstance(_d, list):
+            entfall_list = [x for x in _d if isinstance(x, str)]
+    except Exception:
+        pass
+    datum_iso         = next_date.strftime("%Y-%m-%d")
+    entfall_published = state.get("entfall_published", [])
+    if datum_iso in entfall_list:
+        sftp.close(); client.close()
+        if datum_kurz in entfall_published:
+            print(f"Training {datum_kurz} ist Entfall + bereits veröffentlicht → WARTEN")
+            set_output("needs_update", "false")
+        else:
+            print(f"Training {datum_kurz} als Trainingsentfall markiert → Hinweis veröffentlichen")
+            set_output("needs_update", "true")
+        return
+    elif datum_kurz in entfall_published:
+        sftp.close(); client.close()
+        print(f"Entfall für {datum_kurz} aufgehoben → frischen Plan erstellen")
+        set_output("needs_update", "true")
+        return
+
     # Primär: State-Check. Sekundär: SFTP-Stat (robust gegen manuelle Uploads/Löschungen)
     in_state = datum_kurz in state.get("generated_plans", [])
     plan_exists = in_state
@@ -99,6 +129,15 @@ def main():
         except Exception:
             pass
     print(f"Plan vorhanden: {plan_exists} (state={in_state})")
+
+    # ── Geschützter (manuell von Claude erstellter) Plan → nie anfassen ──────
+    # Schützt z.B. einen Montag erstellten Plan bis das Training vorbei ist.
+    # Der nächste Trainingstag ist ein anderes Datum → wird normal automatisch erstellt.
+    if plan_exists and datum_kurz in state.get("protected_plans", []):
+        sftp.close(); client.close()
+        print(f"Plan {datum_kurz} ist geschützt (manuell erstellt) → kein Auto-Update")
+        set_output("needs_update", "false")
+        return
 
     # ── Kein Plan vorhanden ────────────────────────────────
     if not plan_exists:
