@@ -509,6 +509,36 @@ def replace_config_block(template, new_config):
 #  MAIN
 # ════════════════════════════════════════════════════════════════
 
+def apply_config_roster(sftp):
+    """Laedt config/config.json (von admin.php gepflegt) und ueberschreibt
+    WC_GRUPPEN_TEMPLATE. Bei jedem Fehler bleibt die Hardcodierung aktiv."""
+    global WC_GRUPPEN_TEMPLATE
+    try:
+        f = sftp.open("config/config.json", "r")
+        cfg = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+    except Exception as e:
+        print(f"[CONFIG] config.json nicht ladbar ({e!r}) - nutze Hardcodierung.")
+        return
+    try:
+        gruppen = cfg.get("gruppen") or ["G1", "G2", "G3", "G4"]
+        tmpl = {g: [] for g in gruppen}
+        for p in cfg.get("personen", []):
+            if p.get("rolle") != "turner":
+                continue
+            ni = p.get("name_intern") or p.get("anzeige")
+            g  = p.get("gruppe")
+            if ni and g is not None:
+                tmpl.setdefault(g, []).append(ni)
+        if not any(tmpl.values()):
+            print("[CONFIG] config.json ohne Turner - nutze Hardcodierung.")
+            return
+        WC_GRUPPEN_TEMPLATE = tmpl
+        print(f"[CONFIG] WC-Roster aus config.json: {sum(len(v) for v in tmpl.values())} Turner.")
+    except Exception as e:
+        print(f"[CONFIG] Fehler beim Aufbau ({e!r}) - nutze Hardcodierung.")
+
+
 def main():
     print(f"=== Auto-Wochenchallenge | {date.today()} ===\n")
 
@@ -519,6 +549,7 @@ def main():
     # SFTP verbinden
     print("Verbinde SFTP...")
     ssh, sftp = get_sftp()
+    apply_config_roster(sftp)
     wc_state  = load_wc_state(sftp)
 
     # Mail holen
