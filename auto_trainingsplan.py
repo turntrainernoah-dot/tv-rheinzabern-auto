@@ -804,11 +804,53 @@ def send_whatsapp(text):
 #  MAIN
 # ════════════════════════════════════════════════════════════════
 
+def apply_config_roster(sftp):
+    """Laedt config/config.json (von admin.php gepflegt) und ueberschreibt
+    ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY. Bei jedem Fehler bleibt die
+    Hardcodierung aktiv -> der Plan wird NIE durch eine fehlerhafte config kaputt."""
+    global ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY
+    try:
+        f = sftp.open("config/config.json", "r")
+        cfg = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+    except Exception as e:
+        print(f"[CONFIG] config.json nicht ladbar ({e!r}) - nutze Hardcodierung.")
+        return
+    try:
+        gruppen = cfg.get("gruppen") or ["G1", "G2", "G3", "G4"]
+        turner  = {g: [] for g in gruppen}
+        trainer = []
+        w2d     = {}
+        for p in cfg.get("personen", []):
+            ni = p.get("name_intern") or p.get("anzeige")
+            if not ni:
+                continue
+            anz = (p.get("anzeige") or ni).strip()
+            key = re.sub(r'\s*\(G(\d+)\)$', r' G\1', anz)
+            w2d[key] = ni
+            if p.get("rolle") == "trainer":
+                trainer.append(ni)
+            elif p.get("rolle") == "turner":
+                g = p.get("gruppe")
+                turner.setdefault(g, []).append(ni)
+        if not trainer or not any(turner.values()):
+            print("[CONFIG] config.json unvollstaendig - nutze Hardcodierung.")
+            return
+        ALLE_TURNER        = turner
+        ALLE_TRAINER       = trainer
+        WEBSITE_TO_DISPLAY = w2d
+        print(f"[CONFIG] Roster aus config.json: "
+              f"{sum(len(v) for v in turner.values())} Turner, {len(trainer)} Trainer.")
+    except Exception as e:
+        print(f"[CONFIG] Fehler beim Aufbau ({e!r}) - nutze Hardcodierung.")
+
+
 def main():
     print(f"=== TV Rheinzabern Auto-Trainingsplan | {date.today()} ===\n")
 
     print("Verbinde mit Server...")
     ssh, sftp = get_sftp()
+    apply_config_roster(sftp)
 
     state              = load_state(sftp)
     abmeldungen, raw_abm_hash = read_abmeldungen(sftp)
