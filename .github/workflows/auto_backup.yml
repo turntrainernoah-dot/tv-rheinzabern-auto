@@ -1,0 +1,32 @@
+name: Taegliches State-Backup
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install paramiko
+      - name: State vom Webspace laden
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: python backup_state.py
+      - name: Commit & Push
+        run: |
+          git config user.name "tv-auto-bot"
+          git config user.email "tv-auto-bot@users.noreply.github.com"
+          git add state_backups
+          git diff --staged --quiet || git commit -m "State-Backup $(date -u +%F)"
+          git push
