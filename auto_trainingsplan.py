@@ -435,43 +435,86 @@ for _g, _lst in ALLE_TURNER.items():
 ALLE_BEKANNTEN_NAMES.update(ALLE_TRAINER)
 
 def detect_complex(absences, late_notes):
-    issues        = []   # hard: blockiert Plan-Erstellung
-    soft_warnings = []   # soft: Warnung, aber Plan wird trotzdem erstellt
+    # Es wird IMMER ein Plan erstellt. Staffing-Probleme sind nur soft_warnings
+    # (Hinweis per WhatsApp/Mail) -> autonomer Plan auch bei wenig Trainern/Kindern.
+    issues        = []
+    soft_warnings = []
     anwesend_trainer = [t for t in ALLE_TRAINER if t not in absences.get("Trainer", [])]
     n = len(anwesend_trainer)
-
-    if n <= 2:
-        issues.append(
-            f"Nur {n} Trainer anwesend: {', '.join(anwesend_trainer) or '–'}. "
-            "Automatische Einteilung nicht möglich."
-        )
-
+    if n <= 3:
+        soft_warnings.append((f"low_trainer_{n}",
+            f"Nur {n} Trainer anwesend ({', '.join(anwesend_trainer) or '-'}). "
+            f"Gruppen automatisch zusammengelegt, alle trainieren 17:00-19:00."))
     for gruppe, names in absences.items():
         for name in names:
             if name not in ALLE_BEKANNTEN_NAMES:
-                issues.append(f"Unbekannter Name: '{name}' (Gruppe: {gruppe})")
-
+                soft_warnings.append((f"unknown_{gruppe}_{name}",
+                    f"Unbekannter Name: '{name}' (Gruppe {gruppe})"))
     for gruppe, turner in ALLE_TURNER.items():
-        abw       = absences.get(gruppe, [])
-        anwesend  = len(turner) - len(abw)
+        abw = absences.get(gruppe, [])
+        anwesend = len(turner) - len(abw)
         if len(abw) >= len(turner):
-            issues.append(f"Gruppe {gruppe} hat keine anwesenden Turner (alle {len(abw)} abwesend)!")
+            soft_warnings.append((f"empty_{gruppe}", f"Gruppe {gruppe}: alle Turner abwesend."))
         elif anwesend <= 2:
-            soft_warnings.append((
-                f"low_turner_{gruppe}_{anwesend}",
-                f"Gruppe {gruppe} hat nur {anwesend} Turner anwesend."
-            ))
-
+            soft_warnings.append((f"low_turner_{gruppe}_{anwesend}",
+                f"Gruppe {gruppe} hat nur {anwesend} Turner anwesend."))
     return issues, anwesend_trainer, soft_warnings
 
 # ════════════════════════════════════════════════════════════════
 #  TRAINER-EINTEILUNG
 # ════════════════════════════════════════════════════════════════
 
+def _build_lowstaff_plan(available, abwesend):
+    """Notbesetzung (<=3 Trainer): Gruppen zusammenlegen, alle trainieren 17:00-19:00.
+    3 Trainer -> G1, G2, G3+G4 | 2 -> G1+G2, G3+G4 | 1 -> alle zusammen."""
+    pool = list(available)
+    def pop_by_first(lst, fn):
+        for i, t in enumerate(lst):
+            if t.startswith(fn):
+                return lst.pop(i)
+        return None
+    ordered = []
+    noah = pop_by_first(pool, "Noah")
+    if noah:
+        ordered.append(noah)
+    ordered += pool
+    n = len(ordered)
+    tpl = {
+        "G1":    [("AW G1", "aufwaermen"), ("G1", "g1_blau"), ("G1", "g1_blau"), ("G1", "g1_blau"), ("Abbauen", "aufbauen")],
+        "G2":    [("AW G2", "aufwaermen"), ("G2", "g1_gruen"), ("G2", "g1_gruen"), ("G2", "g1_gruen"), ("Abbauen", "aufbauen")],
+        "G1+G2": [("AW G1+G2", "aufwaermen"), ("G1+G2", "g1_blau"), ("G1+G2", "g1_blau"), ("G1+G2", "g1_blau"), ("Abbauen", "aufbauen")],
+        "G3+G4": [("AW G3+G4", "aufwaermen"), ("G3+G4", "g2_orange"), ("G3+G4", "g2_orange"), ("G3+G4", "g2_orange"), ("Abbauen", "aufbauen")],
+        "Alle":  [("AW Alle", "aufwaermen"), ("Alle Gruppen", "g1_gruen"), ("Alle Gruppen", "g1_gruen"), ("Alle Gruppen", "g1_gruen"), ("Abbauen", "aufbauen")],
+    }
+    if n == 3:
+        labels = ["G1", "G2", "G3+G4"]
+    elif n == 2:
+        labels = ["G1+G2", "G3+G4"]
+    elif n == 1:
+        labels = ["Alle"]
+    else:
+        labels = []
+    assign = {}
+    for i, t in enumerate(ordered):
+        if i < len(labels):
+            assign[t] = labels[i]
+    TRAINER_PLAN = {}
+    for t in ALLE_TRAINER:
+        TRAINER_PLAN[t] = [tuple(x) for x in tpl[assign[t]]] if t in assign else None
+    anmerkungen = ["Alle Gruppen trainieren von 17:00-19:00 Uhr."]
+    if n == 0:
+        anmerkungen.append("ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
+    return TRAINER_PLAN, {}, anmerkungen
+
+
+
 def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
     abwesend  = absences.get("Trainer", [])
     available = [t for t in ALLE_TRAINER if t not in abwesend]
     n = len(available)
+
+    if n <= 3:
+        return _build_lowstaff_plan(available, abwesend)
 
     merge_g23 = (n == 3)
 
