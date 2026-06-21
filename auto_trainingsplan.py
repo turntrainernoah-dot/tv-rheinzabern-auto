@@ -871,6 +871,41 @@ def apply_config_roster(sftp):
         print(f"[CONFIG] Fehler beim Aufbau ({e!r}) - nutze Hardcodierung.")
 
 
+def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, partial):
+    """Admin-Plan: manuell gesetzte Trainer-Zellen sind feste Vorgaben.
+    Manuell belegte Trainer werden aus der Auto-Verteilung herausgenommen, damit
+    ihre Gruppe (z.B. G4) automatisch von einem anderen Trainer uebernommen wird.
+    Leere Randzeiten (erste/letzte Zeile) werden mit Aufbauen/Abbauen gefuellt."""
+    partial = partial or {}
+    committed = [t for t, s in partial.items()
+                 if isinstance(s, list) and any((c and len(c) >= 2 and (c[0] or c[1])) for c in s)]
+    nulled = [t for t, s in partial.items() if s is None]
+    abs2 = {k: list(v) for k, v in absences.items()}
+    abs2.setdefault("Trainer", [])
+    for t in committed + nulled:
+        if t not in abs2["Trainer"]:
+            abs2["Trainer"].append(t)
+    base, _s, _a = build_trainer_plan(abs2, geraet_1, geraet_2, g1_starts_geraet2)
+    for t in committed:
+        cells = partial[t]
+        n = len(cells)
+        out = []
+        for i, c in enumerate(cells):
+            if c and len(c) >= 2 and (c[0] or c[1]):
+                out.append((c[0], c[1]))
+            elif i == 0:
+                out.append(("Aufbauen", "aufbauen"))
+            elif i == n - 1:
+                out.append(("Abbauen", "aufbauen"))
+            else:
+                out.append(("", ""))
+        base[t] = out
+    for t in nulled:
+        base[t] = None
+    return base
+
+
+
 def main():
     print(f"=== TV Rheinzabern Auto-Trainingsplan | {date.today()} ===\n")
 
@@ -956,12 +991,7 @@ def main():
         _g1 = fixed_for_date.get("geraet_1") or "Boden"
         _g2 = fixed_for_date.get("geraet_2") or "Barren"
         _g1s = fixed_for_date.get("g1_starts_geraet2", state.get("g1_starts_geraet2", False))
-        _base_tp, _stm, _anm = build_trainer_plan(absences, _g1, _g2, _g1s)
-        for _tn, _slots in (fixed_for_date.get("fixed_trainer_partial") or {}).items():
-            if _slots is None:
-                _base_tp[_tn] = None
-            elif isinstance(_slots, list) and any(any(_c) for _c in _slots):
-                _base_tp[_tn] = [list(_c) for _c in _slots]
+        _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, fixed_for_date.get("fixed_trainer_partial") or {})
         fixed_for_date["fixed_trainer_plan"] = _base_tp
         fixed_for_date["lock_trainer_plan"] = True
         lock_trainer = True
