@@ -40,6 +40,11 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 WHATSAPP_PHONE    = os.environ.get("WHATSAPP_PHONE", "")
 CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 
+# --- Wochenchallenge-Quelle: "email" (Mail) oder "chat" (admin.php WhatsApp-Chat + KI) ---
+WC_SOURCE         = os.environ.get("WC_SOURCE", "email")
+GH_MODELS_TOKEN   = os.environ.get("GH_MODELS_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
+CHAT_REMOTE       = os.environ.get("WC_CHAT_REMOTE", "wc_chat_input.json")
+
 # ════════════════════════════════════════════════════════════════
 #  NAME-MAPPING
 #  Schlüssel: lowercase wie er im Mail vorkommen kann
@@ -565,10 +570,43 @@ def apply_config_roster(sftp):
         print(f"[CONFIG] Fehler beim Aufbau ({e!r}) - nutze Hardcodierung.")
 
 
+def fetch_chat_body(sftp):
+    """Chat-Modus: liest den rohen WhatsApp-Chat (von admin.php abgelegt) vom
+    Server und laesst ihn von der KI (GitHub Models) in das saubere
+    parse_email_body-Format umwandeln. Gibt (clean_body, info) oder (None, None)."""
+    try:
+        f = sftp.open(CHAT_REMOTE, "r")
+        raw = f.read().decode("utf-8"); f.close()
+    except Exception as e:
+        print(f"[CHAT] Keine {CHAT_REMOTE} auf dem Server ({e!r}).")
+        return None, None
+    try:
+        payload = json.loads(raw)
+        raw_chat = payload.get("chat", "") if isinstance(payload, dict) else str(raw)
+    except Exception:
+        raw_chat = raw
+    if not raw_chat.strip():
+        print("[CHAT] Chat-Datei leer."); return None, None
+    # sofort als .processed markieren -> kein Doppel-Verarbeiten
+    try:
+        try: sftp.remove(CHAT_REMOTE + ".processed")
+        except Exception: pass
+        sftp.rename(CHAT_REMOTE, CHAT_REMOTE + ".processed")
+    except Exception as e:
+        print(f"[CHAT] Konnte {CHAT_REMOTE} nicht umbenennen: {e!r}")
+    import wc_chat_parser
+    body, info = wc_chat_parser.chat_to_clean_body(
+        raw_chat, NAME_MAP, WC_GRUPPEN_TEMPLATE, token=GH_MODELS_TOKEN)
+    print("[CHAT] KI-bereinigter Body:\n" + body)
+    return body, info
+
+
 def main():
     print(f"=== Auto-Wochenchallenge | {date.today()} ===\n")
 
-    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+    print(f"[MODE] WC_SOURCE = {WC_SOURCE}")
+
+    if WC_SOURCE != "chat" and (not GMAIL_USER or not GMAIL_APP_PASSWORD):
         print("[ERROR] GMAIL_USER oder GMAIL_APP_PASSWORD nicht gesetzt.")
         sys.exit(1)
 
@@ -578,14 +616,22 @@ def main():
     apply_config_roster(sftp)
     wc_state  = load_wc_state(sftp)
 
-    # Mail holen
-    print("Suche WC-Mail...")
-    mail_id, body = fetch_latest_wc_mail()
-
-    if not mail_id or not body:
-        print("Keine WC-Mail gefunden.")
-        sftp.close(); ssh.close()
-        return
+    if WC_SOURCE == "chat":
+        print("Lese WhatsApp-Chat (admin.php) + KI-Auswertung (GitHub Models)...")
+        body, chat_info = fetch_chat_body(sftp)
+        if not body:
+            print("Kein verwertbarer Chat gefunden.")
+            sftp.close(); ssh.close()
+            return
+        mail_id = b"chat"
+    else:
+        # Mail holen
+        print("Suche WC-Mail...")
+        mail_id, body = fetch_latest_wc_mail()
+        if not mail_id or not body:
+            print("Keine WC-Mail gefunden.")
+            sftp.close(); ssh.close()
+            return
 
     print(f"Mail gefunden (ID {mail_id.decode()}):")
     print("--- BODY PREVIEW ---")
@@ -769,30 +815,3 @@ def main():
         for name, tage in members.items():
             key = f"{grp}_{name}"
             old = all_vorpunkte.get(key, 0)
-            all_vorpunkte[key] = old + len(tage)
-
-    wc_state["last_processed_week_start"] = week_start_short
-    wc_state["last_email_hash"]           = email_hash   # NEU: E-Mail-Hash speichern
-    wc_state["alle_vorpunkte"]            = all_vorpunkte
-    wc_state["use_friday_start"]          = False  # nach Verarbeitung immer zurücksetzen
-    save_wc_state(sftp, wc_state)
-
-    sftp.close()
-    ssh.close()
-
-    # Bestätigungs-WhatsApp
-    trainees = [f"{grp} {name}: {len(tage)} Pkt"
-                for grp, members in gruppen.items()
-                for name, tage in members.items() if tage]
-    send_whatsapp(
-        f"Hi Noah, Cloude hier 🏆\n\n"
-        f"Wochenchallenge {start_datum} – {end_datum} ist fertig und hochgeladen!\n\n"
-        f"Punkte diese Woche:\n" +
-        "\n".join(f"  {t}" for t in trainees) +
-        f"\n\ntv-rheinzabern.e-websolutions.de"
-    )
-
-    print("\nFERTIG!")
-
-if __name__ == "__main__":
-    main()
