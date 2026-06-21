@@ -2,38 +2,32 @@ name: Automatischer Trainingsplan
 
 on:
   schedule:
-    # Alle 30 Minuten rund um die Uhr — reagiert auf Abwesenheitsänderungen
     - cron: '*/30 * * * *'
-    # Mi + Fr um 16:00 Uhr CEST (= 14:00 UTC) — garantierte Vorab-Kontrolle
     - cron: '0 14 * * 3,5'
-  workflow_dispatch:   # Manueller Start über GitHub jederzeit möglich
+  workflow_dispatch:
 
 jobs:
   generate-plan:
     runs-on: ubuntu-latest
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Node.js 20 → 24 (Pflicht ab 16.06.2026)
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v4
-
       - name: Python einrichten
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: pip-Cache laden
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: pip-paramiko-${{ runner.os }}-v1
           restore-keys: pip-paramiko-${{ runner.os }}-
-
-      - name: paramiko installieren (immer – schnell)
+      - name: paramiko installieren
         run: pip install paramiko>=3.0
-
-      - name: Schnell-Check (Abwesenheiten + Anmerkungen)
+      - name: Schnell-Check
         id: quickcheck
         env:
           SSH_HOST:     ${{ secrets.SSH_HOST }}
@@ -41,19 +35,14 @@ jobs:
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
           SSH_PORT:     ${{ secrets.SSH_PORT }}
         run: python check_quick.py
-
-      # ── Ab hier nur wenn eine Änderung erkannt wurde ──────────
-
       - name: openpyxl installieren
         if: steps.quickcheck.outputs.needs_update == 'true'
         run: pip install openpyxl>=3.1
-
-      - name: LibreOffice installieren (für PDF-Export)
+      - name: LibreOffice installieren
         if: steps.quickcheck.outputs.needs_update == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y libreoffice --no-install-recommends
-
       - name: Trainingsplan generieren / aktualisieren
         if: steps.quickcheck.outputs.needs_update == 'true'
         env:
@@ -63,4 +52,7 @@ jobs:
           SSH_PORT:           ${{ secrets.SSH_PORT }}
           WHATSAPP_PHONE:     ${{ secrets.WHATSAPP_PHONE }}
           CALLMEBOT_APIKEY:   ${{ secrets.CALLMEBOT_APIKEY }}
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO:           ${{ secrets.EMAIL_TO }}
         run: python auto_trainingsplan.py
