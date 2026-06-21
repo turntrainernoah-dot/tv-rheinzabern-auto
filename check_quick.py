@@ -110,6 +110,22 @@ def main():
         return
 
     # Primär: State-Check. Sekundär: SFTP-Stat (robust gegen manuelle Uploads/Löschungen)
+    # Admin-Editor-Aenderung (fixed_entries.json) -> regenerieren
+    try:
+        _f = sftp.open("fixed_entries.json", "r")
+        _fx = json.loads(_f.read().decode("utf-8", "replace")); _f.close()
+    except Exception:
+        _fx = {}
+    _entry = _fx.get(datum_kurz) if isinstance(_fx, dict) else None
+    if isinstance(_entry, dict) and _entry.get("manuell_bearbeitet"):
+        _fh = hashlib.md5(json.dumps(_entry, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+        _stored = state.get("plan_data", {}).get(datum_kurz, {}).get("fixed_hash", "")
+        if _fh != _stored:
+            sftp.close(); client.close()
+            print(f"Admin-Planaenderung {datum_kurz} erkannt -> regenerieren")
+            set_output("needs_update", "true")
+            return
+
     in_state = datum_kurz in state.get("generated_plans", [])
     plan_exists = in_state
     if in_state:
