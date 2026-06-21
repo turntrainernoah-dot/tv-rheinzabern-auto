@@ -8,15 +8,21 @@ env:
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: System-Check + WhatsApp
+      - name: System-Check + WhatsApp + Mail
         env:
           GH_TOKEN_AUTO: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           WHATSAPP_PHONE: ${{ secrets.WHATSAPP_PHONE }}
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python heartbeat.py
