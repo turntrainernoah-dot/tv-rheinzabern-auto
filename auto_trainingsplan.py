@@ -921,6 +921,37 @@ def main():
             state["generated_plans"].remove(datum_kurz)
         save_state(sftp, state)
 
+    # -- Admin-Editor (manuell_bearbeitet aus admin.php) anwenden --------------
+    force_regen = False
+    admin_fixed_hash = ""
+    if fixed_for_date.get("manuell_bearbeitet"):
+        import hashlib as _hl
+        admin_fixed_hash = _hl.md5(json.dumps(fixed_for_date, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+        _g1 = fixed_for_date.get("geraet_1") or "Boden"
+        _g2 = fixed_for_date.get("geraet_2") or "Barren"
+        _g1s = fixed_for_date.get("g1_starts_geraet2", state.get("g1_starts_geraet2", False))
+        _base_tp, _stm, _anm = build_trainer_plan(absences, _g1, _g2, _g1s)
+        for _tn, _slots in (fixed_for_date.get("fixed_trainer_partial") or {}).items():
+            if _slots is None:
+                _base_tp[_tn] = None
+            elif isinstance(_slots, list) and any(any(_c) for _c in _slots):
+                _base_tp[_tn] = [list(_c) for _c in _slots]
+        fixed_for_date["fixed_trainer_plan"] = _base_tp
+        fixed_for_date["lock_trainer_plan"] = True
+        lock_trainer = True
+        fixed_tp_raw = _base_tp
+        _notiz = (fixed_for_date.get("notiz") or "").strip()
+        if _notiz:
+            anmerkungen_server.append({"trainer": "Hinweis", "notiz": _notiz})
+        _stored_fh = state.get("plan_data", {}).get(datum_kurz, {}).get("fixed_hash", "")
+        if admin_fixed_hash != _stored_fh:
+            print(f"[ADMIN] Manuelle Planbearbeitung {datum_kurz} (neu/geaendert) -> regeneriere.")
+            remove_plan_files(sftp, datum_kurz)
+            state.get("plan_data", {}).pop(datum_kurz, None)
+            if datum_kurz in state.get("generated_plans", []):
+                state["generated_plans"].remove(datum_kurz)
+            force_regen = True
+
     if plan_exists(sftp, datum_kurz):
         # ── Geschützter Plan → nie überschreiben ───────────────
         if datum_kurz in state.get("protected_plans", []):
@@ -1084,6 +1115,8 @@ def main():
 
         # State: Hash + dedup-Listen aktualisieren
         plan_data["absences_hash"]   = new_hash
+        if admin_fixed_hash:
+            plan_data["fixed_hash"] = admin_fixed_hash
         plan_data["stored_absences"] = absences
         if new_late_notes:
             plan_data["late_notes_sent"] = list(already_sent_notes | set(new_late_notes))
@@ -1132,7 +1165,7 @@ def main():
         now_utc   = datetime.now(timezone.utc)
         days_away = (training_date - date.today()).days
 
-        if not is_publication_window():
+        if not is_publication_window() and not force_regen:
             print(
                 f"Kein Plan vorhanden, aber außerhalb Publikationsfenster "
                 f"({now_utc.strftime('%H:%M')} UTC, Wochentag {now_utc.weekday()}) → warte bis Mi/Fr 22:00 CEST."
@@ -1140,7 +1173,7 @@ def main():
             sftp.close(); ssh.close()
             return
 
-        if days_away > 5:
+        if days_away > 5 and not force_regen:
             print(
                 f"Kein Plan vorhanden, Training in {days_away} Tagen "
                 f"({now_utc.strftime('%H:%M')} UTC) → noch zu weit entfernt."
@@ -1258,6 +1291,7 @@ def main():
             "g1_starts_geraet2": g1_starts_g2,
             "late_notes_sent":  list(late_notes),            # bereits gesendet beim Erstellen
             "warnings_sent":    [k for k, _ in soft_warnings],  # bereits gesendet beim Erstellen
+            "fixed_hash":       admin_fixed_hash,
         }
         save_state(sftp, state)
 
