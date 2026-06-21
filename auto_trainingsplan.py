@@ -787,8 +787,34 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
 #  WHATSAPP (CallMeBot)
 # ════════════════════════════════════════════════════════════════
 
+def send_email(text):
+    import os, smtplib, ssl as _ssl
+    from email.mime.text import MIMEText
+    user = os.environ.get("GMAIL_USER", "")
+    pw   = os.environ.get("GMAIL_APP_PASSWORD", "")
+    to   = os.environ.get("EMAIL_TO", "") or user
+    if not user or not pw:
+        print("[MAIL] keine Gmail-Zugangsdaten - uebersprungen.")
+        return
+    try:
+        lines = [l for l in text.strip().splitlines() if l.strip()]
+        subj = "TV Rheinzabern: " + (lines[0][:80] if lines else "Info")
+        msg = MIMEText(text, _charset="utf-8")
+        msg["Subject"] = subj
+        msg["From"] = user
+        msg["To"] = to
+        ctx = _ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
+            s.login(user, pw)
+            s.sendmail(user, [to], msg.as_string())
+        print("[MAIL] gesendet an", to)
+    except Exception as e:
+        print("[MAIL] Fehler:", e)
+
+
 def send_whatsapp(text):
     """Sendet eine WhatsApp-Nachricht via CallMeBot (kostenlos)."""
+    send_email(text)
     if not WHATSAPP_PHONE or not CALLMEBOT_APIKEY:
         print(f"[WA-TEST] {text[:200]}")
         return
