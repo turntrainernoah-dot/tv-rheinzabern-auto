@@ -1,0 +1,22 @@
+name: Heartbeat Monitoring
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: System-Check + WhatsApp
+        env:
+          GH_TOKEN_AUTO: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WHATSAPP_PHONE: ${{ secrets.WHATSAPP_PHONE }}
+          CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
+        run: python heartbeat.py
