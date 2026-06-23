@@ -1,0 +1,100 @@
+{
+    "17.06.26": {
+        "lock_trainer_plan": true,
+        "geraet_1": "Boden",
+        "geraet_2": "Barren",
+        "g1_starts_geraet2": true,
+        "fixed_absences": {
+            "G2": [
+                "Henry K.",
+                "Matti G.",
+                "Levent K.",
+                "Caius C."
+            ],
+            "Trainer": [
+                "Torben W."
+            ]
+        },
+        "fixed_trainer_plan": {
+            "Noah W.": [
+                [
+                    "AW Alle",
+                    "aufwaermen"
+                ],
+                [
+                    "G3+G4",
+                    "g1_blau"
+                ],
+                [
+                    "G3+G4",
+                    "g1_blau"
+                ],
+                [
+                    "G3+G4",
+                    "g2_lila"
+                ],
+                [
+                    "Abbauen",
+                    "aufbauen"
+                ]
+            ],
+            "Andy K.": [
+                [
+                    "Aufbauen",
+                    "aufbauen"
+                ],
+                [
+                    "G1",
+                    "g2_orange"
+                ],
+                [
+                    "G1",
+                    "g2_orange"
+                ],
+                [
+                    "G1",
+                    "g1_gruen"
+                ],
+                [
+                    "Abbauen",
+                    "aufbauen"
+                ]
+            ],
+            "Fabian G.": null,
+            "Julian K.": null,
+            "Cassian P.": null,
+            "Torben W.": null
+        }
+    },
+    "24.06.26": {
+        "manuell_bearbeitet": true,
+        "lock_trainer_plan": false,
+        "quelle": "admin.php",
+        "geraet_1": "Reck",
+        "geraet_2": "Sprung",
+        "fixed_trainer_partial": {
+            "Andy K.": [
+                [
+                    "",
+                    ""
+                ],
+                [
+                    "Springer",
+                    "springer"
+                ],
+                [
+                    "Springer",
+                    "springer"
+                ],
+                [
+                    "Springer",
+                    "springer"
+                ],
+                [
+                    "",
+                    ""
+                ]
+            ]
+        }
+    }
+}
