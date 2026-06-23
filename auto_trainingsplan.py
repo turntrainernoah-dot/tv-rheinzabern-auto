@@ -276,7 +276,7 @@ def read_trainingsentfall(sftp):
         pass
     return []
 
-def build_entfall_pdf(datum, datum_kurz, wochentag):
+def build_entfall_pdf(datum, datum_kurz, wochentag, notiz=""):
     """Erzeugt den minimalen Trainingsentfall-Hinweis (xlsx+pdf), identisch zum
     manuellen 12.06-Hinweis. Gibt (xlsx_path, pdf_path) zurück."""
     wb = openpyxl.Workbook()
@@ -291,9 +291,13 @@ def build_entfall_pdf(datum, datum_kurz, wochentag):
     c = ws["B2"]; c.value = "⚠  TRAININGSENTFALL"
     c.fill = fill("C0392B"); c.font = font(bold=True, color="FFFFFF", size=22); c.alignment = align()
     ws.row_dimensions[2].height = 50
-    c = ws["B3"]; c.value = f"Das Training am {datum} ist ausgefallen."
-    c.fill = fill("FAD7A0"); c.font = font(bold=False, color="000000", size=12); c.alignment = align()
-    ws.row_dimensions[3].height = 28
+    notiz = (notiz or "").strip()
+    b3_text = notiz if notiz else f"Das Training am {datum} ist ausgefallen."
+    c = ws["B3"]; c.value = b3_text
+    c.fill = fill("FAD7A0"); c.font = font(bold=False, color="000000", size=12); c.alignment = align(wrap=bool(notiz))
+    # Zeilenhoehe an Anmerkungs-Laenge anpassen (mehrzeilige Anmerkungen)
+    _lines = b3_text.count("\n") + 1 + (len(b3_text) // 55)
+    ws.row_dimensions[3].height = max(28, _lines * 20)
     ws.page_setup.fitToPage = True
     ws.page_setup.fitToWidth = 1; ws.page_setup.fitToHeight = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
@@ -314,10 +318,11 @@ def build_entfall_pdf(datum, datum_kurz, wochentag):
         raise RuntimeError(f"LibreOffice Fehler (Entfall): {result.stderr[:300]}")
     return xlsx_path, pdf_path
 
-def publish_entfall(sftp, datum, datum_kurz, wochentag):
+def publish_entfall(sftp, datum, datum_kurz, wochentag, notiz=""):
     """Veröffentlicht den Entfall-Hinweis: ersetzt einen evtl. vorhandenen normalen
-    Plan durch den Trainingsentfall-Hinweis und aktualisiert das Widget-JSON."""
-    xlsx_path, pdf_path = build_entfall_pdf(datum, datum_kurz, wochentag)
+    Plan durch den Trainingsentfall-Hinweis und aktualisiert das Widget-JSON.
+    notiz = im Admin-Bereich (fixed_entries) eingetragene Anmerkung -> wird Inhalt."""
+    xlsx_path, pdf_path = build_entfall_pdf(datum, datum_kurz, wochentag, notiz)
     upload_pdf(sftp, pdf_path, datum_kurz)
     upload_xlsx(sftp, xlsx_path, datum_kurz)
     tag, monat, jahr = datum.split(".")
@@ -1000,7 +1005,7 @@ def main():
             print(f"[ENTFALL] {datum} bereits als Entfall veröffentlicht – nichts zu tun.")
             sftp.close(); ssh.close()
             return
-        publish_entfall(sftp, datum, datum_kurz, wtag)
+        publish_entfall(sftp, datum, datum_kurz, wtag, fixed_for_date.get("notiz", ""))
         if datum_kurz not in entfall_published:
             entfall_published.append(datum_kurz)
         if datum_kurz not in state.setdefault("generated_plans", []):
