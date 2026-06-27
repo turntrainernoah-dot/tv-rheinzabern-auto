@@ -172,6 +172,17 @@ def get_gear_from_plan_data(state):
     print(f"[ROTATION-WARN] Kombo {g1}+{g2} nicht in GERAETE_ROTATION gefunden – Fallback auf State.")
     return None, None, None
 
+def active_training_date():
+    """Aktuell relevanter Trainingstag: an einem Trainingstag (Mi/Fr) ist das
+    HEUTE (bis der Tag vorbei ist), damit ein erst am Trainingstag markierter
+    Entfall noch veroeffentlicht wird und nicht das naechste Training vorgezogen
+    wird. Sonst der naechste Mi/Fr."""
+    t = date.today()
+    if t.weekday() in (2, 4):
+        return t
+    return next_training_date()
+
+
 def next_training_date():
     """Nächster Trainingstag (Mi/Fr) ab morgen."""
     d = date.today() + timedelta(days=1)
@@ -970,7 +981,7 @@ def main():
     print(f"Abmeldungen-Hash (raw): {raw_abm_hash[:8]}...")
 
     today         = date.today()
-    training_date = next_training_date()
+    training_date = active_training_date()
     datum         = fmt_datum(training_date)
     datum_kurz    = fmt_datum_kurz(training_date)
     wtag          = wochentag_name(training_date)
@@ -1001,18 +1012,25 @@ def main():
     entfall_published = state.setdefault("entfall_published", [])
 
     if datum_iso in entfall_list:
-        if datum_kurz in entfall_published and plan_exists(sftp, datum_kurz):
+        _ef_notiz = (fixed_for_date.get("notiz", "") or "").strip()
+        _ef_nhash = hashlib.md5(_ef_notiz.encode("utf-8")).hexdigest()
+        _notiz_store = state.setdefault("entfall_notiz_hash", {})
+        _notiz_changed = _notiz_store.get(datum_kurz) != _ef_nhash
+        _was_published = datum_kurz in entfall_published
+        if _was_published and plan_exists(sftp, datum_kurz) and not _notiz_changed:
             print(f"[ENTFALL] {datum} bereits als Entfall veröffentlicht – nichts zu tun.")
             sftp.close(); ssh.close()
             return
-        publish_entfall(sftp, datum, datum_kurz, wtag, fixed_for_date.get("notiz", ""))
+        publish_entfall(sftp, datum, datum_kurz, wtag, _ef_notiz)
+        _notiz_store[datum_kurz] = _ef_nhash
         if datum_kurz not in entfall_published:
             entfall_published.append(datum_kurz)
         if datum_kurz not in state.setdefault("generated_plans", []):
             state["generated_plans"].append(datum_kurz)
         state.get("plan_data", {}).pop(datum_kurz, None)  # alten Plan-Hash verwerfen
         save_state(sftp, state)
-        send_whatsapp(
+        if not _was_published:
+            send_whatsapp(
             f"Hi Noah, Cloude hier ⚠️\n\n"
             f"Das Training am {wtag}, {datum} ist als Trainingsentfall markiert.\n"
             f"Ich habe den Entfall-Hinweis veröffentlicht und erstelle KEINEN normalen Plan."
@@ -1024,6 +1042,7 @@ def main():
         # Entfall wurde wieder aufgehoben → Hinweis entfernen, frischen Plan erzeugen
         print(f"[ENTFALL] Entfall für {datum} aufgehoben → normaler Plan wird neu erstellt.")
         entfall_published.remove(datum_kurz)
+        state.setdefault("entfall_notiz_hash", {}).pop(datum_kurz, None)
         remove_plan_files(sftp, datum_kurz)
         state.get("plan_data", {}).pop(datum_kurz, None)
         if datum_kurz in state.get("generated_plans", []):
