@@ -1,0 +1,111 @@
+{
+  "last_training_date": "01.07.2026",
+  "geraet_combo_index": 0,
+  "g1_starts_geraet2": true,
+  "generated_plans": [
+    "10.06.26",
+    "17.06.26",
+    "19.06.26",
+    "24.06.26",
+    "26.06.26",
+    "01.07.26"
+  ],
+  "plan_data": {
+    "17.06.26": {
+      "absences_hash": "456649a08b7c4eeae6628b652f6c909d",
+      "trainer_absences": [
+        "Fabian",
+        "Julian",
+        "Cassian"
+      ],
+      "stored_absences": {
+        "G1": [
+          "Felix G1"
+        ],
+        "G2": [],
+        "G3": [],
+        "G4": [],
+        "Trainer": [
+          "Fabian",
+          "Julian",
+          "Cassian"
+        ]
+      },
+      "geraet_1": "Sprung",
+      "geraet_2": "Reck",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [
+        "• Noah: Es könnte sein, dass ich paar Minuten später komme, da ich davor im Praktikum bin"
+      ]
+    },
+    "24.06.26": {
+      "absences_hash": "4628b71774d3ca9e794955abcd187b82",
+      "trainer_absences": [
+        "Cassian P."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Finn M."
+        ],
+        "G2": [],
+        "G3": [
+          "Michael K.",
+          "Erik E."
+        ],
+        "G4": [],
+        "Trainer": [
+          "Cassian P."
+        ]
+      },
+      "geraet_1": "Reck",
+      "geraet_2": "Sprung",
+      "g1_starts_geraet2": false,
+      "late_notes_sent": [],
+      "warnings_sent": [],
+      "fixed_hash": "f5c74b1a64f66efc44ec1de05cb87b66"
+    },
+    "01.07.26": {
+      "absences_hash": "aeec64f873346ffe30682045d298a50d",
+      "trainer_absences": [
+        "Noah W.",
+        "Cassian P."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Finn M."
+        ],
+        "G2": [
+          "Levent K."
+        ],
+        "G3": [
+          "Michael K.",
+          "Erik E."
+        ],
+        "G4": [
+          "Felix L.",
+          "Anton K.",
+          "Mika W."
+        ],
+        "Trainer": [
+          "Noah W.",
+          "Cassian P."
+        ]
+      },
+      "geraet_1": "Boden",
+      "geraet_2": "Barren",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [],
+      "warnings_sent": [
+        "low_turner_G4_1"
+      ],
+      "fixed_hash": ""
+    }
+  },
+  "protected_plans": [
+    "17.06.26"
+  ],
+  "entfall_published": [
+    "19.06.26",
+    "26.06.26"
+  ]
+}
