@@ -37,6 +37,16 @@ def next_training_date():
         d += timedelta(days=1)
     return d
 
+def active_training_date():
+    """Aktuell relevanter Trainingstag: an einem Trainingstag (Mi/Fr) ist das
+    HEUTE (bis der Tag vorbei ist), damit ein erst am Trainingstag markierter
+    Entfall noch veroeffentlicht wird und nicht das naechste Training vorgezogen
+    wird. Sonst der naechste Mi/Fr."""
+    t = date.today()
+    if t.weekday() in (2, 4):
+        return t
+    return next_training_date()
+
 def is_publication_window():
     """Mi oder Fr nach 20:00 UTC (= 22:00 CEST Sommerzeit)."""
     now = datetime.now(timezone.utc)
@@ -54,7 +64,7 @@ def md5(data: bytes) -> str:
 # ════════════════════════════════════════════════════════════
 def main():
     print("=== Trainingsplan Schnell-Check ===")
-    next_date  = next_training_date()
+    next_date  = active_training_date()
     datum_kurz = next_date.strftime("%d.%m.%y")
     print(f"Naechstes Training: {datum_kurz}")
 
@@ -95,8 +105,20 @@ def main():
     datum_iso         = next_date.strftime("%Y-%m-%d")
     entfall_published = state.get("entfall_published", [])
     if datum_iso in entfall_list:
+        # Admin-Notiz fuer diesen Tag laden (kann nach der Erst-Veroeffentlichung
+        # noch eingetragen/geaendert werden -> Hinweis muss dann nachziehen).
+        _cur_notiz = ""
+        try:
+            _ef = sftp.open("fixed_entries.json", "r")
+            _efx = json.loads(_ef.read().decode("utf-8", "replace")); _ef.close()
+            if isinstance(_efx, dict):
+                _cur_notiz = (_efx.get(datum_kurz, {}).get("notiz", "") or "").strip()
+        except Exception:
+            pass
+        _cur_nhash = hashlib.md5(_cur_notiz.encode("utf-8")).hexdigest()
+        _stored_nhash = state.get("entfall_notiz_hash", {}).get(datum_kurz)
         sftp.close(); client.close()
-        if datum_kurz in entfall_published:
+        if datum_kurz in entfall_published and _cur_nhash == _stored_nhash:
             print(f"Training {datum_kurz} ist Entfall + bereits veröffentlicht → WARTEN")
             set_output("needs_update", "false")
         else:
