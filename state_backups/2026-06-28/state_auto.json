@@ -1,0 +1,89 @@
+{
+  "last_training_date": "01.07.2026",
+  "geraet_combo_index": 2,
+  "g1_starts_geraet2": false,
+  "generated_plans": [
+    "10.06.26",
+    "17.06.26",
+    "19.06.26",
+    "24.06.26",
+    "26.06.26",
+    "01.07.26"
+  ],
+  "plan_data": {
+    "17.06.26": {
+      "absences_hash": "456649a08b7c4eeae6628b652f6c909d",
+      "trainer_absences": [
+        "Fabian",
+        "Julian",
+        "Cassian"
+      ],
+      "stored_absences": {
+        "G1": [
+          "Felix G1"
+        ],
+        "G2": [],
+        "G3": [],
+        "G4": [],
+        "Trainer": [
+          "Fabian",
+          "Julian",
+          "Cassian"
+        ]
+      },
+      "geraet_1": "Sprung",
+      "geraet_2": "Reck",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [
+        "• Noah: Es könnte sein, dass ich paar Minuten später komme, da ich davor im Praktikum bin"
+      ]
+    },
+    "01.07.26": {
+      "absences_hash": "a3bf52791eaf01ef664f723a8877302c",
+      "trainer_absences": [
+        "Noah W.",
+        "Cassian P."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Finn M."
+        ],
+        "G2": [
+          "Levent K."
+        ],
+        "G3": [
+          "Michael K.",
+          "Erik E."
+        ],
+        "G4": [
+          "Felix L.",
+          "Anton K.",
+          "Mika W."
+        ],
+        "Trainer": [
+          "Noah W.",
+          "Cassian P."
+        ]
+      },
+      "geraet_1": "Sprung",
+      "geraet_2": "Reck",
+      "g1_starts_geraet2": false,
+      "late_notes_sent": [],
+      "warnings_sent": [
+        "low_turner_G4_1"
+      ],
+      "fixed_hash": "f80e29afd59df43b34ece905251ce6ea"
+    }
+  },
+  "protected_plans": [
+    "17.06.26"
+  ],
+  "entfall_published": [
+    "19.06.26",
+    "26.06.26",
+    "24.06.26"
+  ],
+  "entfall_notiz_hash": {
+    "24.06.26": "d41d8cd98f00b204e9800998ecf8427e"
+  }
+}
