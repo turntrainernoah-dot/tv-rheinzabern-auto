@@ -595,6 +595,11 @@ def fetch_chat_body(sftp):
             raw_chat, NAME_MAP, WC_GRUPPEN_TEMPLATE, token=GH_MODELS_TOKEN)
     except Exception as e:
         print(f"[CHAT] KI-Auswertung fehlgeschlagen: {e!r} -- Chat bleibt erhalten.")
+        try:
+            with sftp.open("wc_last_error.txt", "w") as _ef:
+                _ef.write(f"{date.today()} KI-Fehler: {e!r}")
+        except Exception:
+            pass
         return None, None
     if not body or not body.strip():
         print("[CHAT] KI lieferte keine verwertbaren Zeilen -- Chat bleibt erhalten.")
