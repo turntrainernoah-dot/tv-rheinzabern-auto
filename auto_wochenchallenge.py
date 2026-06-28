@@ -839,3 +839,30 @@ def main():
         for name, tage in members.items():
             key = f"{grp}_{name}"
             old = all_vorpunkte.get(key, 0)
+            all_vorpunkte[key] = old + len(tage)
+
+    wc_state["last_processed_week_start"] = week_start_short
+    wc_state["last_email_hash"]           = email_hash   # NEU: E-Mail-Hash speichern
+    wc_state["alle_vorpunkte"]            = all_vorpunkte
+    wc_state["use_friday_start"]          = False  # nach Verarbeitung immer zurücksetzen
+    save_wc_state(sftp, wc_state)
+
+    sftp.close()
+    ssh.close()
+
+    # Bestätigungs-WhatsApp
+    trainees = [f"{grp} {name}: {len(tage)} Pkt"
+                for grp, members in gruppen.items()
+                for name, tage in members.items() if tage]
+    send_whatsapp(
+        f"Hi Noah, Cloude hier 🏆\n\n"
+        f"Wochenchallenge {start_datum} – {end_datum} ist fertig und hochgeladen!\n\n"
+        f"Punkte diese Woche:\n" +
+        "\n".join(f"  {t}" for t in trainees) +
+        f"\n\ntv-rheinzabern.e-websolutions.de"
+    )
+
+    print("\nFERTIG!")
+
+if __name__ == "__main__":
+    main()
