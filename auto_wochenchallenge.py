@@ -587,6 +587,12 @@ def fetch_chat_body(sftp):
         raw_chat = raw
     if not raw_chat.strip():
         print("[CHAT] Chat-Datei leer."); return None, None
+    try:
+        with sftp.open("wc_last_run.txt", "w") as _rf:
+            _rf.write(f"{date.today()} chat-mode erreicht, chat_len={len(raw_chat)}, "
+                      f"token_gesetzt={bool(GH_MODELS_TOKEN)}")
+    except Exception:
+        pass
     # Erst KI-Auswertung, DANN als .processed markieren. Bei KI-Fehler bleibt der
     # Chat erhalten und kann erneut verarbeitet werden (kein Datenverlust).
     import wc_chat_parser
@@ -603,6 +609,11 @@ def fetch_chat_body(sftp):
         return None, None
     if not body or not body.strip():
         print("[CHAT] KI lieferte keine verwertbaren Zeilen -- Chat bleibt erhalten.")
+        try:
+            with sftp.open("wc_last_error.txt", "w") as _ef:
+                _ef.write(f"{date.today()} LEERER Body. info={info!r}")
+        except Exception:
+            pass
         return None, None
     try:
         try: sftp.remove(CHAT_REMOTE + ".processed")
