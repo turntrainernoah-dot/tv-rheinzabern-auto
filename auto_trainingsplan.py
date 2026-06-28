@@ -172,6 +172,52 @@ def get_gear_from_plan_data(state):
     print(f"[ROTATION-WARN] Kombo {g1}+{g2} nicht in GERAETE_ROTATION gefunden – Fallback auf State.")
     return None, None, None
 
+
+def get_next_gear(state, exclude_date=None):
+    """Bestimmt die Geraete fuers naechste Training aus den letzten (bis zu) 8
+    ECHTEN Trainingsplaenen in plan_data. Ausgefallene Trainings
+    (entfall_published) und Eintraege ohne gueltige Geraetekombination werden
+    ignoriert. Vom juengsten gueltigen Plan wird genau EIN Schritt weitergerueckt.
+    Reihenfolge (Zyklus): Sprung+Reck -> Seitpferd+Ringe -> Boden+Barren.
+    Gibt (combo_idx, g1_starts_geraet2) zurueck. geraet_combo_index wird bewusst
+    NICHT mehr verwendet (vermeidet Drift / uebersprungene Geraete)."""
+    plan_data = state.get("plan_data", {})
+    entfall   = set(state.get("entfall_published", []))
+    valid = []
+    for datum_kurz, pdata in plan_data.items():
+        if exclude_date and datum_kurz == exclude_date:
+            continue
+        if datum_kurz in entfall or not pdata:
+            continue
+        g1 = pdata.get("geraet_1"); g2 = pdata.get("geraet_2")
+        idx = None
+        for i, (r1, r2) in enumerate(GERAETE_ROTATION):
+            if r1 == g1 and r2 == g2:
+                idx = i; break
+        if idx is None:
+            continue
+        try:
+            d = datetime.strptime(datum_kurz, "%d.%m.%y").date()
+        except Exception:
+            continue
+        valid.append((d, datum_kurz, idx, pdata.get("g1_starts_geraet2", False)))
+
+    if not valid:
+        print("[ROTATION] Kein gueltiger Geraete-Verlauf in plan_data -> Default Sprung+Reck.")
+        return 1, True   # Sprung+Reck als sinnvoller Startpunkt
+
+    valid.sort(key=lambda x: x[0])
+    last8 = valid[-8:]
+    _, last_key, last_idx, last_g1s = last8[-1]
+    next_idx = (last_idx + 1) % len(GERAETE_ROTATION)
+    verlauf = ", ".join(f"{k}={GERAETE_ROTATION[i][0]}+{GERAETE_ROTATION[i][1]}"
+                        for _, k, i, _ in last8)
+    print(f"[ROTATION] Letzte {len(last8)} echten Trainings: {verlauf}")
+    print(f"[ROTATION] Juengster echter Plan {last_key} = "
+          f"{GERAETE_ROTATION[last_idx][0]}+{GERAETE_ROTATION[last_idx][1]} "
+          f"-> naechster: {GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
+    return next_idx, (not last_g1s)
+
 def active_training_date():
     """Aktuell relevanter Trainingstag: an einem Trainingstag (Mi/Fr) ist das
     HEUTE (bis der Tag vorbei ist), damit ein erst am Trainingstag markierter
@@ -1090,8 +1136,8 @@ def main():
             # Plan ohne gespeicherten Hash (manuell erstellt oder erste Initialisierung)
             # → Plan mit AKTUELLEN Abwesenheiten NEU ERSTELLEN (nicht nur Hash speichern)
             print(f"Plan ohne Hash fuer {datum_kurz} → Plan wird mit aktuellen Abwesenheiten erstellt.")
-            combo_idx = state.get("geraet_combo_index", 0)
-            geraet_combo = GERAETE_ROTATION[combo_idx % len(GERAETE_ROTATION)]
+            _ng_idx, _ng_g1s = get_next_gear(state, exclude_date=datum_kurz)
+            geraet_combo = GERAETE_ROTATION[_ng_idx]
             # plan_data mit Defaults initialisieren und stored_hash="" setzen
             # damit die Update-Logik unten sicher ausgeführt wird
             plan_data = {
@@ -1100,7 +1146,7 @@ def main():
                 "stored_absences":  {},
                 "geraet_1":         geraet_combo[0],
                 "geraet_2":         geraet_combo[1],
-                "g1_starts_geraet2": state.get("g1_starts_geraet2", False),
+                "g1_starts_geraet2": _ng_g1s,
             }
             state.setdefault("plan_data", {})[datum_kurz] = plan_data
             if datum_kurz not in state.get("generated_plans", []):
@@ -1306,17 +1352,9 @@ def main():
 
         print(f"Kein Plan vorhanden, starte Generierung... (Training in {days_away} Tagen, {now_utc.strftime('%H:%M')} UTC)")
 
-        # Geräte-Rotation aus plan_data berechnen (robuster als geraet_combo_index)
-        last_idx, last_g1_starts, last_date = get_gear_from_plan_data(state)
-        if last_idx is not None:
-            new_combo_idx = (last_idx + 1) % 3
-            g1_starts_g2  = not last_g1_starts
-            print(f"[ROTATION] Aus plan_data berechnet: letzter Combo {last_idx} → neu {new_combo_idx}")
-        else:
-            new_combo_idx = (state.get("geraet_combo_index", 2) + 1) % 3
-            g1_starts_g2  = not state.get("g1_starts_geraet2", True)
-            print(f"[ROTATION] Fallback auf geraet_combo_index: {new_combo_idx}")
-
+        # Geräte-Rotation: letzte (bis zu) 8 ECHTEN Trainings ansehen, ausgefallene
+        # ignorieren und genau einen Schritt weiterrücken (robust gegen Drift).
+        new_combo_idx, g1_starts_g2 = get_next_gear(state, exclude_date=datum_kurz)
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
 
         # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
