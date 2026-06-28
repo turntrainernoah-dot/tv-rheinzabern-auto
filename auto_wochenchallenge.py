@@ -587,16 +587,24 @@ def fetch_chat_body(sftp):
         raw_chat = raw
     if not raw_chat.strip():
         print("[CHAT] Chat-Datei leer."); return None, None
-    # sofort als .processed markieren -> kein Doppel-Verarbeiten
+    # Erst KI-Auswertung, DANN als .processed markieren. Bei KI-Fehler bleibt der
+    # Chat erhalten und kann erneut verarbeitet werden (kein Datenverlust).
+    import wc_chat_parser
+    try:
+        body, info = wc_chat_parser.chat_to_clean_body(
+            raw_chat, NAME_MAP, WC_GRUPPEN_TEMPLATE, token=GH_MODELS_TOKEN)
+    except Exception as e:
+        print(f"[CHAT] KI-Auswertung fehlgeschlagen: {e!r} -- Chat bleibt erhalten.")
+        return None, None
+    if not body or not body.strip():
+        print("[CHAT] KI lieferte keine verwertbaren Zeilen -- Chat bleibt erhalten.")
+        return None, None
     try:
         try: sftp.remove(CHAT_REMOTE + ".processed")
         except Exception: pass
         sftp.rename(CHAT_REMOTE, CHAT_REMOTE + ".processed")
     except Exception as e:
         print(f"[CHAT] Konnte {CHAT_REMOTE} nicht umbenennen: {e!r}")
-    import wc_chat_parser
-    body, info = wc_chat_parser.chat_to_clean_body(
-        raw_chat, NAME_MAP, WC_GRUPPEN_TEMPLATE, token=GH_MODELS_TOKEN)
     print("[CHAT] KI-bereinigter Body:\n" + body)
     return body, info
 
