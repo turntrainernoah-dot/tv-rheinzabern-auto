@@ -120,18 +120,37 @@ def chat_to_clean_body(raw_chat, name_map, gruppen_template,
     clean_body_text passt direkt in parse_email_body().
     info_dict enthaelt 'unsure' (Liste) und 'dropped' (ungueltige Namen).
     """
-    token = token or os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
+    # Mehrere Token-Quellen nacheinander probieren (selbstheilend): explizit
+    # uebergebenes Token, dann GH_MODELS_TOKEN-Secret, dann das in Actions immer
+    # gueltige GITHUB_TOKEN (Job-Permission models: read). So scheitert der
+    # KI-Aufruf nicht mehr, wenn ein einzelnes Token ungueltig ist.
+    candidates = []
+    for _t in (token, os.environ.get("GH_MODELS_TOKEN"), os.environ.get("GITHUB_TOKEN")):
+        if _t and _t not in candidates:
+            candidates.append(_t)
+    if not candidates:
         raise RuntimeError("Kein GH_MODELS_TOKEN / GITHUB_TOKEN gesetzt.")
 
     roster = build_roster_text(name_map, gruppen_template)
     user_msg = (f"ROSTER (nur diese Personen sind gueltig):\n{roster}\n\n"
                 f"WhatsApp-Chat:\n{raw_chat.strip()}")
+    messages = [{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg}]
 
-    content = _call_github_models(
-        [{"role": "system", "content": SYSTEM_PROMPT},
-         {"role": "user", "content": user_msg}],
-        token, model)
+    content = None
+    errors = []
+    for _tk in candidates:
+        try:
+            content = _call_github_models(messages, _tk, model)
+            break
+        except urllib.error.HTTPError as e:
+            try: _d = e.read().decode("utf-8", "replace")[:160]
+            except Exception: _d = ""
+            errors.append(f"HTTP {e.code} (Token ...{_tk[-4:]}): {_d}")
+        except Exception as e:
+            errors.append(f"{type(e).__name__} (Token ...{_tk[-4:]}): {e}")
+    if content is None:
+        raise RuntimeError("GitHub-Models-Aufruf fehlgeschlagen: " + " | ".join(errors))
 
     return clean_from_model_json(content, name_map, verbose=verbose)
 
