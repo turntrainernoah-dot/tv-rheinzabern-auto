@@ -37,6 +37,7 @@ jobs:
         env:
           WC_SOURCE:          ${{ github.event.action == 'wochenchallenge_chat' && 'chat' || 'email' }}
           GH_MODELS_TOKEN:    ${{ secrets.GH_MODELS_TOKEN }}
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
           SSH_HOST:           ${{ secrets.SSH_HOST }}
           SSH_USER:           ${{ secrets.SSH_USER }}
           SSH_PASSWORD:       ${{ secrets.SSH_PASSWORD }}
