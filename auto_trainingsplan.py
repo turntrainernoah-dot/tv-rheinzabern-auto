@@ -530,6 +530,26 @@ def compute_blocked_slots(kind, time_min):
         return {i for i in range(5) if time_min < SLOT_END_MIN[i]}
     return set()
 
+def upload_anmerkungen_auto(sftp, datum_kurz, lines):
+    """Schreibt die generierten Auto-Anmerkungen je Datum nach anmerkungen_auto.json
+    (Quelle fuer die Vorbefuellung des Notizfeldes in admin.php)."""
+    try:
+        try:
+            f = sftp.open("anmerkungen_auto.json", "r")
+            data = json.loads(f.read().decode("utf-8"))
+            f.close()
+            if not isinstance(data, dict):
+                data = {}
+        except Exception:
+            data = {}
+        data[datum_kurz] = list(lines)
+        f = sftp.open("anmerkungen_auto.json", "wb")
+        f.write(json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+        f.close()
+        print(f"[ANM] anmerkungen_auto.json aktualisiert ({datum_kurz}: {len(lines)} Zeilen).")
+    except Exception as e:
+        print(f"[ANM] anmerkungen_auto.json nicht geschrieben: {e}")
+
 def timing_annotations(trainer_timing):
     """Anmerkungs-Zeilen: '(Name) kommt später (HH:MM): Notiz'."""
     lines = []
@@ -1359,12 +1379,24 @@ def main():
         for note in late_notes:
             anmerkungen.append(note)
 
-        # Trainer-Anmerkungen eintragen (Name: Text, ohne Datum)
+        # Trainer-Anmerkungen eintragen; Admin-"Hinweis" separat als Override
+        _admin_notiz = ""
         for anm in anmerkungen_server:
             trainer_name = anm.get("trainer", "")
             notiz        = anm.get("notiz", "").strip()
-            if notiz:
-                anmerkungen.append(f"• {trainer_name}: {notiz}")
+            if not notiz:
+                continue
+            if trainer_name == "Hinweis":
+                _admin_notiz = notiz
+                continue
+            anmerkungen.append(f"• {trainer_name}: {notiz}")
+
+        # Auto-Anmerkungen fuer Admin-Vorbefuellung sichern (vor evtl. Override)
+        upload_anmerkungen_auto(sftp, datum_kurz, anmerkungen)
+
+        # Admin-Override: editierte Notiz ersetzt die Anmerkungen 1:1 (kein Doppeln)
+        if _admin_notiz:
+            anmerkungen = [ln.rstrip() for ln in _admin_notiz.split("\n") if ln.strip()]
 
         xlsx_path, pdf_path = build_excel(
             datum=datum, wochentag=wtag,
@@ -1521,12 +1553,24 @@ def main():
         for note in late_notes:
             anmerkungen.append(note)
 
-        # Trainer-Anmerkungen eintragen (Name: Text, ohne Datum)
+        # Trainer-Anmerkungen eintragen; Admin-"Hinweis" separat als Override
+        _admin_notiz = ""
         for anm in anmerkungen_server:
             trainer_name = anm.get("trainer", "")
             notiz        = anm.get("notiz", "").strip()
-            if notiz:
-                anmerkungen.append(f"• {trainer_name}: {notiz}")
+            if not notiz:
+                continue
+            if trainer_name == "Hinweis":
+                _admin_notiz = notiz
+                continue
+            anmerkungen.append(f"• {trainer_name}: {notiz}")
+
+        # Auto-Anmerkungen fuer Admin-Vorbefuellung sichern (vor evtl. Override)
+        upload_anmerkungen_auto(sftp, datum_kurz, anmerkungen)
+
+        # Admin-Override: editierte Notiz ersetzt die Anmerkungen 1:1 (kein Doppeln)
+        if _admin_notiz:
+            anmerkungen = [ln.rstrip() for ln in _admin_notiz.split("\n") if ln.strip()]
 
         xlsx_path, pdf_path = build_excel(
             datum=datum,
