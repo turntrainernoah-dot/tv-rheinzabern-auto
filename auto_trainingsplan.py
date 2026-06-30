@@ -466,10 +466,105 @@ def upload_aktuell_json(sftp, json_data):
 #  ABWESENHEITEN AUSWERTEN
 # ════════════════════════════════════════════════════════════════
 
+SLOT_START_MIN = [17*60+0, 17*60+30, 18*60+0, 18*60+15, 19*60+0]   # 17:00,17:30,18:00,18:15,19:00
+SLOT_END_MIN   = [17*60+30, 18*60+0, 18*60+15, 19*60+0, 19*60+30]
+
+def _extract_time_min(notiz):
+    """Findet eine Uhrzeit (HH:MM, HH.MM, 'HH Uhr') -> Minuten seit 0:00 oder None."""
+    s = (notiz or "").lower()
+    m = re.search(r'(\d{1,2})[:.](\d{2})', s)
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+        if 15 <= h <= 21 and 0 <= mi < 60:
+            return h*60+mi
+    m = re.search(r'(\d{1,2})\s*uhr', s)
+    if m:
+        h = int(m.group(1))
+        if 15 <= h <= 21:
+            return h*60
+    return None
+
+def parse_trainer_timing(notiz):
+    """Richtung ('spaet'=kommt spaeter / 'frueh'=geht frueher / None) + Uhrzeit-Min."""
+    s = (notiz or "").lower()
+    t = _extract_time_min(s)
+    frueh_kw = ["früher", "frueher", "geht", "gehe", "gehen", "weg", "raus", "verlass",
+                "eher", "nur bis", "muss los", "muss weg", "muss gehen", "vorzeitig"]
+    spaet_kw = ["später", "spaeter", "verspät", "verspaet", "komme", "kommt", "erst",
+                "etwas spät", "bisschen spät", "verspätung", "verzögert"]
+    is_frueh = any(k in s for k in frueh_kw)
+    is_spaet = any(k in s for k in spaet_kw)
+    if "bis" in s and t is not None:
+        return "frueh", t
+    if is_frueh and not is_spaet:
+        return "frueh", t
+    if is_spaet and not is_frueh:
+        return "spaet", t
+    if is_spaet and is_frueh:
+        if "komme" in s or "kommt" in s or "erst" in s:
+            return "spaet", t
+        return "frueh", t
+    return None, t
+
+def is_timing_note(notiz, kind, tmin):
+    """True = Verspaetung/frueher-gehen (Trainer bleibt da). Echte Abwesenheiten
+    ('Urlaub','krank','Spätschicht') liefern kind=None -> False."""
+    if kind is None:
+        return False
+    if tmin is not None:
+        return True
+    s = (notiz or "").lower()
+    strong = ["später", "spaeter", "früher", "frueher", "verspät", "verspaet",
+              "kommt erst", "komme erst", "geht früh", "geh früh", "nur bis"]
+    return any(k in s for k in strong)
+
+def compute_blocked_slots(kind, time_min):
+    """Set geblockter Slot-Indizes (0..4). spaet: bis Ankunft; frueh: ab Weggang."""
+    if kind == "spaet":
+        if time_min is None:
+            return {0}
+        return {i for i in range(5) if time_min > SLOT_START_MIN[i]}
+    if kind == "frueh":
+        if time_min is None:
+            return {4}
+        return {i for i in range(5) if time_min < SLOT_END_MIN[i]}
+    return set()
+
+def timing_annotations(trainer_timing):
+    """Anmerkungs-Zeilen: '(Name) kommt später (HH:MM): Notiz'."""
+    lines = []
+    for name, info in (trainer_timing or {}).items():
+        label = "kommt später" if info.get("kind") == "spaet" else "geht früher"
+        ts    = info.get("time_str")
+        notiz = (info.get("notiz") or "").strip()
+        head  = f"{name} {label}" + (f" ({ts})" if ts else "")
+        lines.append(f"• {head}: {notiz}" if notiz else f"• {head}")
+    return lines
+
+def apply_timing_blocks(trainer_plan, trainer_timing):
+    """Ueberschreibt geblockte Slots verspaeteter/frueher gehender Trainer ROT mit
+    'kommt später'/'geht früher'. Trainer bleibt eingeteilt (NICHT abwesend)."""
+    if not trainer_timing:
+        return trainer_plan
+    for name, info in trainer_timing.items():
+        plan = trainer_plan.get(name)
+        if not plan:
+            continue
+        label = "kommt später" if info.get("kind") == "spaet" else "geht früher"
+        ts    = info.get("time_str")
+        cell  = f"{label}\n{ts}" if ts else label
+        new   = list(plan)
+        for i in info.get("blocked", []):
+            if 0 <= i < len(new):
+                new[i] = (cell, "sonder")
+        trainer_plan[name] = new
+    return trainer_plan
+
 def get_absences(abmeldungen, training_date):
     target    = training_date.strftime("%Y-%m-%d")
     absences  = {"G1": [], "G2": [], "G3": [], "G4": [], "Trainer": []}
     late_notes = []
+    trainer_timing = {}
 
     for entry in abmeldungen:
         if entry.get("datum") != target:
@@ -478,14 +573,25 @@ def get_absences(abmeldungen, training_date):
         gruppe = entry.get("gruppe", "").strip()
         notiz  = entry.get("notiz", "").strip()
 
-        if notiz and any(k in notiz.lower() for k in ["später", "verspät", "kommt", "geht"]):
-            late_notes.append(f"• {name}: {notiz}")
-            continue
+        # Trainer mit Verspaetung / frueher-gehen: ANWESEND, nur Zeitbloecke blocken.
+        if name in ALLE_TRAINER:
+            kind, tmin = parse_trainer_timing(notiz)
+            is_versp = bool(entry.get("verspaetung", False))
+            if is_versp or is_timing_note(notiz, kind, tmin):
+                if kind is None:
+                    kind = "spaet"
+                blocked = compute_blocked_slots(kind, tmin)
+                tstr = f"{tmin//60:02d}:{tmin%60:02d}" if tmin is not None else None
+                trainer_timing[name] = {
+                    "kind": kind, "time_min": tmin, "time_str": tstr,
+                    "notiz": notiz, "blocked": sorted(blocked),
+                }
+                continue
 
         if gruppe in absences:
             absences[gruppe].append(name)
 
-    return absences, late_notes
+    return absences, late_notes, trainer_timing
 
 # ════════════════════════════════════════════════════════════════
 #  KOMPLEXE FÄLLE ERKENNEN
@@ -1036,7 +1142,8 @@ def main():
     print(f"\nNaechstes Training: {wtag} {datum} ({days_away} Tage)\n")
 
     # Abwesenheiten und Hash berechnen
-    absences, late_notes = get_absences(abmeldungen, training_date)
+    absences, late_notes, trainer_timing = get_absences(abmeldungen, training_date)
+    late_notes = late_notes + timing_annotations(trainer_timing)
     # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
     new_hash = raw_abm_hash
 
@@ -1246,6 +1353,7 @@ def main():
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
                 absences, geraet_1, geraet_2, g1_starts_g2
             )
+            trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
         for note in late_notes:
@@ -1407,6 +1515,7 @@ def main():
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
                 absences, geraet_1, geraet_2, g1_starts_g2
             )
+            trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
         for note in late_notes:
