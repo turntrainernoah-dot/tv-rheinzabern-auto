@@ -63,15 +63,16 @@
         ],
         "Trainer": [
           "Noah W.",
-          "Cassian P.",
-          "Fabian G.",
-          "Torben W."
+          "Cassian P."
         ]
       },
       "geraet_1": "Sprung",
       "geraet_2": "Reck",
       "g1_starts_geraet2": false,
-      "late_notes_sent": [],
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:15): 18:15 muss ich gehen",
+        "• Torben W. kommt später"
+      ],
       "warnings_sent": [
         "low_trainer_3",
         "low_trainer_2",
