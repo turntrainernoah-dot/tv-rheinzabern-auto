@@ -632,7 +632,7 @@ def detect_complex(absences, late_notes):
     if n <= 3:
         soft_warnings.append((f"low_trainer_{n}",
             f"Nur {n} Trainer anwesend ({', '.join(anwesend_trainer) or '-'}). "
-            f"Gruppen automatisch zusammengelegt, alle trainieren 17:00-19:00."))
+            f"Gruppen werden automatisch sinnvoll zusammengelegt."))
     for gruppe, names in absences.items():
         for name in names:
             if name not in ALLE_BEKANNTEN_NAMES:
@@ -701,135 +701,113 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
     available = [t for t in ALLE_TRAINER if t not in abwesend]
     n = len(available)
 
-    if n <= 3:
-        return _build_lowstaff_plan(available, abwesend)
-
-    merge_g23 = (n == 3)
-
-    assignment = {}
-    pool = list(available)
-
-    # Suche nach Vorname (robust gegen Namensformat-Änderungen)
-    def pop_by_first(lst, first_name):
-        for i, t in enumerate(lst):
-            if t.startswith(first_name):
-                return lst.pop(i)
-        return None
-
-    noah = pop_by_first(pool, "Noah")
-    if noah:
-        assignment[noah] = "G1"
-    else:
-        assignment[pool.pop(0)] = "G1"
-
-    andy = pop_by_first(pool, "Andy")
-    if andy:
-        g4_trainer = andy
-    elif pool:
-        g4_trainer = pool.pop(-1)
-    else:
-        g4_trainer = None
-
-    if g4_trainer:
-        assignment[g4_trainer] = "G4"
-
-    if merge_g23:
-        if pool:
-            assignment[pool.pop(0)] = "G2+G3"
-    else:
-        for gruppe in ("G2", "G3"):
-            if pool:
-                assignment[pool.pop(0)] = gruppe
-        for t in pool:
-            assignment[t] = "Springer"
-
-    def farbe(gruppe, phase):
-        if g1_starts_geraet2:
-            if phase == 1:
-                return {"G1":"g2_orange","G2":"g1_blau","G3":"g1_blau",
-                        "G2+G3":"g1_blau"}.get(gruppe,"aufbauen")
-            else:
-                return {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange",
-                        "G2+G3":"g2_lila"}.get(gruppe,"aufbauen")
-        else:
-            if phase == 1:
-                return {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange",
-                        "G2+G3":"g2_lila"}.get(gruppe,"aufbauen")
-            else:
-                return {"G1":"g2_orange","G2":"g2_lila","G3":"g1_blau",
-                        "G2+G3":"g1_blau"}.get(gruppe,"aufbauen")
-
-    G4_SLOT3 = "g1_gruen"
-    G4_SLOT4 = "g2_orange"
-
-    TRAINER_PLAN = {}
-    for trainer in ALLE_TRAINER:
-        if trainer in abwesend:
-            TRAINER_PLAN[trainer] = None
-            continue
-        if trainer not in assignment:
-            TRAINER_PLAN[trainer] = None
-            continue
-
-        grp = assignment[trainer]
-
-        if grp == "G1":
-            TRAINER_PLAN[trainer] = [
-                ("AW G1",    "aufwaermen"),
-                ("G1",       farbe("G1", 1)),
-                ("G1",       farbe("G1", 1)),
-                ("G1",       farbe("G1", 2)),
-                ("Abbauen",  "aufbauen"),
-            ]
-        elif grp == "G2+G3":
-            TRAINER_PLAN[trainer] = [
-                ("AW G2+G3", "aufwaermen"),
-                ("G2+G3",    farbe("G2+G3", 1)),
-                ("G2+G3",    farbe("G2+G3", 1)),
-                ("G2+G3",    farbe("G2+G3", 2)),
-                ("Abbauen",  "aufbauen"),
-            ]
-        elif grp == "G2":
-            TRAINER_PLAN[trainer] = [
-                ("AW G2",    "aufwaermen"),
-                ("G2",       farbe("G2", 1)),
-                ("G2",       farbe("G2", 1)),
-                ("G2",       farbe("G2", 2)),
-                ("Abbauen",  "aufbauen"),
-            ]
-        elif grp == "G3":
-            TRAINER_PLAN[trainer] = [
-                ("AW G3",    "aufwaermen"),
-                ("G3",       farbe("G3", 1)),
-                ("G3",       farbe("G3", 1)),
-                ("G3",       farbe("G3", 2)),
-                ("Abbauen",  "aufbauen"),
-            ]
-        elif grp == "G4":
-            TRAINER_PLAN[trainer] = [
-                ("Aufbauen", "aufbauen"),
-                ("AW G4",    "aufwaermen"),
-                ("AW G4",    "aufwaermen"),
-                ("G4",       G4_SLOT3),
-                ("G4",       G4_SLOT4),
-            ]
-        elif grp == "Springer":
-            TRAINER_PLAN[trainer] = [
-                ("Aufbauen", "aufbauen"),
-                ("Springer", "springer"),
-                ("Springer", "springer"),
-                ("Springer", "springer"),
-                ("Abbauen",  "aufbauen"),
-            ]
-
-    andy_full = next((t for t in available if t.startswith("Andy")), None)
-    if andy_full and assignment.get(andy_full) == "Springer":
-        if TRAINER_PLAN.get(andy_full):
-            TRAINER_PLAN[andy_full][4] = ("G4", G4_SLOT4)
+    # anwesende Kinder je Gruppe
+    present = {g: max(0, len(ALLE_TURNER[g]) - len(absences.get(g, []))) for g in ("G1","G2","G3","G4")}
+    active  = [g for g in ("G1","G2","G3","G4") if present[g] >= 1]
 
     anmerkungen = []
     if "Barren" in (geraet_1, geraet_2):
         anmerkungen.append("• Barren G3: Kippe üben")
+
+    if not active:
+        anmerkungen.insert(0, "ACHTUNG: Alle Turner abwesend - kein Training.")
+        return {t: None for t in ALLE_TRAINER}, {}, anmerkungen
+    if n == 0:
+        anmerkungen.insert(0, "ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
+        return {t: None for t in ALLE_TRAINER}, {}, anmerkungen
+
+    # ---- Einheiten bilden ----
+    units = [[g] for g in active]
+    def ucount(u): return sum(present[g] for g in u)
+    def crosses(a, b): return a[-1] == "G2" and b[0] == "G3"   # G2|G3-Grenze = last resort
+    def best_merge(units):
+        best = None
+        for i in range(len(units)-1):
+            a, b = units[i], units[i+1]
+            combined = ucount(a) + ucount(b)
+            score = combined + (1000 if crosses(a, b) else 0)
+            if best is None or score < best[0]:
+                best = (score, i, combined)
+        return best
+    # zu wenig Trainer -> zusammenlegen bis units <= n
+    while len(units) > n:
+        _, i, _ = best_merge(units)
+        units[i] = units[i] + units[i+1]; del units[i+1]
+
+    # ---- Julian-Springer-Prinzip ----
+    julian_present = any(t.startswith("Julian") for t in available)
+    if julian_present and (n - len(units)) == 0 and len(units) >= 2:
+        bm = best_merge(units)
+        if bm is not None and bm[2] <= 8:      # nur wenn zusammengelegte Gruppe <= 8 Kids
+            _, i, _ = bm
+            units[i] = units[i] + units[i+1]; del units[i+1]
+
+    # G4-Zeit-Hinweis, wenn G4 in einer Zusammenlegung ist
+    if any(len(u) >= 2 and "G4" in u for u in units):
+        anmerkungen.append("Gruppe 4 hat zwischen 17:00-19:00 Training")
+
+    # ---- Trainer den Einheiten zuordnen ----
+    pool = list(available)
+    def pop_first(name):
+        for i, t in enumerate(pool):
+            if t.startswith(name): return pool.pop(i)
+        return None
+    def unit_with(g):
+        for idx, u in enumerate(units):
+            if g in u: return idx
+        return None
+    noah = pop_first("Noah"); andy = pop_first("Andy"); julian = pop_first("Julian")
+    order = [t for t in (noah, andy, julian) if t] + pool
+    pref = {}
+    if noah: pref[noah] = unit_with("G1")
+    if andy: pref[andy] = unit_with("G4")
+
+    taken = set(); assigned = {}; springers = []
+    for t in order:
+        idx = pref.get(t)
+        if idx is None or idx in taken:
+            idx = next((j for j in range(len(units)) if j not in taken), None)
+        if idx is None:
+            springers.append(t)
+        else:
+            assigned[t] = idx; taken.add(idx)
+
+    # ---- Farben / Templates ----
+    def farbe(gruppe, phase):
+        if g1_starts_geraet2:
+            m = ({"G1":"g2_orange","G2":"g1_blau","G3":"g1_blau"} if phase==1
+                 else {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"})
+        else:
+            m = ({"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"} if phase==1
+                 else {"G1":"g2_orange","G2":"g2_lila","G3":"g1_blau"})
+        return m.get(gruppe, "aufbauen")
+    G4_SLOT3, G4_SLOT4 = "g1_gruen", "g2_orange"
+    PALETTE = ["g1_blau", "g2_orange", "g1_gruen", "g2_lila"]
+
+    def label_of(u):
+        return "Alle Gruppen" if len(u) == 4 else "+".join(u)
+    def tpl_single(g):
+        return [("AW "+g,"aufwaermen"),(g,farbe(g,1)),(g,farbe(g,1)),(g,farbe(g,2)),("Abbauen","aufbauen")]
+    def tpl_g4():
+        return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",G4_SLOT3),("G4",G4_SLOT4)]
+    def tpl_merged(label, col):
+        return [("AW "+label,"aufwaermen"),(label,col),(label,col),(label,col),("Abbauen","aufbauen")]
+    def tpl_springer():
+        return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
+
+    TRAINER_PLAN = {}
+    for t in ALLE_TRAINER:
+        if t not in assigned and t not in springers:
+            TRAINER_PLAN[t] = None; continue
+        if t in springers:
+            TRAINER_PLAN[t] = tpl_springer(); continue
+        u = units[assigned[t]]
+        if u == ["G4"]:
+            TRAINER_PLAN[t] = tpl_g4()
+        elif len(u) == 1:
+            TRAINER_PLAN[t] = tpl_single(u[0])
+        else:
+            TRAINER_PLAN[t] = tpl_merged(label_of(u), PALETTE[assigned[t] % len(PALETTE)])
 
     return TRAINER_PLAN, {}, anmerkungen
 
