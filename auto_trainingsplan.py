@@ -564,6 +564,47 @@ def timing_annotations(trainer_timing):
         lines.append(f"• {head}: {notiz}" if notiz else f"• {head}")
     return lines
 
+def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
+    """Freien Trainer fuer 'slot' finden: erst Springer, dann Auf-/Abbau.
+    Wer in diesem Slot selbst spaet/frueh geblockt ist, scheidet aus."""
+    def blocked_at(t):
+        info = trainer_timing.get(t)
+        return bool(info) and slot in info.get("blocked", [])
+    for want in ("springer", "aufbauen"):
+        for t, plan in trainer_plan.items():
+            if t == exclude or not plan or slot >= len(plan):
+                continue
+            if blocked_at(t):
+                continue
+            _txt, ck = plan[slot]
+            if ck == want:
+                return t
+    return None
+
+def apply_timing_coverage(trainer_plan, trainer_timing):
+    """Vertretung: geht ein Trainer frueher / kommt spaeter, uebernimmt fuer die
+    fehlenden Slots ein freier Trainer (bevorzugt der Springer) dessen Gruppe.
+    Der Springer verlaesst dafuer kurz seine Julian-Bereitschaft (laut Noah ok).
+    MUSS VOR apply_timing_blocks laufen (liest die Original-Gruppenzelle)."""
+    if not trainer_timing:
+        return trainer_plan
+    GRUPPEN_COLORS = {"aufwaermen", "g1_blau", "g1_gruen", "g2_orange", "g2_lila"}
+    for name, info in trainer_timing.items():
+        plan = trainer_plan.get(name)
+        if not plan:
+            continue
+        for i in sorted(info.get("blocked", [])):
+            if not (0 <= i < len(plan)):
+                continue
+            text, ck = plan[i]
+            if ck not in GRUPPEN_COLORS:
+                continue
+            coverer = _find_free_coverer(trainer_plan, trainer_timing, i, exclude=name)
+            if coverer:
+                p = list(trainer_plan[coverer]); p[i] = (text, ck); trainer_plan[coverer] = p
+    return trainer_plan
+
+
 def apply_timing_blocks(trainer_plan, trainer_timing):
     """Ueberschreibt geblockte Slots verspaeteter/frueher gehender Trainer ROT mit
     'kommt später'/'geht früher'. Trainer bleibt eingeteilt (NICHT abwesend)."""
@@ -1354,6 +1395,7 @@ def main():
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
                 absences, geraet_1, geraet_2, g1_starts_g2
             )
+            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
@@ -1535,6 +1577,7 @@ def main():
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
                 absences, geraet_1, geraet_2, g1_starts_g2
             )
+            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
