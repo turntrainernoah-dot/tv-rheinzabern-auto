@@ -38,12 +38,14 @@ def next_training_date():
     return d
 
 def active_training_date():
-    """Aktuell relevanter Trainingstag: an einem Trainingstag (Mi/Fr) ist das
-    HEUTE (bis der Tag vorbei ist), damit ein erst am Trainingstag markierter
-    Entfall noch veroeffentlicht wird und nicht das naechste Training vorgezogen
-    wird. Sonst der naechste Mi/Fr."""
+    """Aktuell relevanter Trainingstag.
+    - Trainingstag (Mi/Fr) TAGSUEBER: HEUTE (Entfall/Updates auf heutigen Plan).
+    - Trainingstag ABENDS im Veroeffentlichungsfenster (>=22:00 CEST): der
+      NAECHSTE Trainingstag -> Mi-Abend prueft bereits den Freitagsplan.
+    - Sonst: der naechste Mi/Fr.
+    Muss identisch zu auto_trainingsplan.active_training_date sein!"""
     t = date.today()
-    if t.weekday() in (2, 4):
+    if t.weekday() in (2, 4) and not is_publication_window():
         return t
     return next_training_date()
 
