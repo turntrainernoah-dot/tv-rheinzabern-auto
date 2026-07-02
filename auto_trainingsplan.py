@@ -219,12 +219,15 @@ def get_next_gear(state, exclude_date=None):
     return next_idx, (not last_g1s)
 
 def active_training_date():
-    """Aktuell relevanter Trainingstag: an einem Trainingstag (Mi/Fr) ist das
-    HEUTE (bis der Tag vorbei ist), damit ein erst am Trainingstag markierter
-    Entfall noch veroeffentlicht wird und nicht das naechste Training vorgezogen
-    wird. Sonst der naechste Mi/Fr."""
+    """Aktuell relevanter Trainingstag.
+    - Trainingstag (Mi/Fr) TAGSUEBER: HEUTE (damit ein am Trainingstag markierter
+      Entfall noch veroeffentlicht wird und Updates auf den heutigen Plan wirken).
+    - Trainingstag ABENDS im Veroeffentlichungsfenster (>=22:00 CEST, Training
+      vorbei): der NAECHSTE Trainingstag -> Mi-Abend erzeugt bereits den
+      Freitagsplan, Fr-Abend den naechsten Mittwochsplan.
+    - Sonst: der naechste Mi/Fr."""
     t = date.today()
-    if t.weekday() in (2, 4):
+    if t.weekday() in (2, 4) and not is_publication_window():
         return t
     return next_training_date()
 
@@ -1452,13 +1455,20 @@ def main():
         now_utc   = datetime.now(timezone.utc)
         days_away = (training_date - date.today()).days
 
-        if not is_publication_window() and not force_regen:
+        # Sicherheitsnetz: Steht das naechste Training unmittelbar bevor (<=1 Tag)
+        # und existiert noch KEIN Plan, wird sofort erzeugt - auch ausserhalb des
+        # 22:00-Fensters. So bleibt kein Training ohne Plan, falls das regulaere
+        # Mi/Fr-Abendfenster verpasst wurde.
+        imminent = days_away <= 1
+        if not is_publication_window() and not force_regen and not imminent:
             print(
                 f"Kein Plan vorhanden, aber außerhalb Publikationsfenster "
                 f"({now_utc.strftime('%H:%M')} UTC, Wochentag {now_utc.weekday()}) → warte bis Mi/Fr 22:00 CEST."
             )
             sftp.close(); ssh.close()
             return
+        if imminent and not is_publication_window() and not force_regen:
+            print(f"[SICHERHEITSNETZ] Training in {days_away} Tag(en), kein Plan → erstelle sofort (Fenster uebergangen).")
 
         if days_away > 5 and not force_regen:
             print(
