@@ -173,7 +173,7 @@ def get_gear_from_plan_data(state):
     return None, None, None
 
 
-def get_next_gear(state, exclude_date=None):
+def get_next_gear(state, exclude_date=None, fixed_entries=None):
     """Bestimmt die Geraete fuers naechste Training aus den letzten (bis zu) 8
     ECHTEN Trainingsplaenen in plan_data. Ausgefallene Trainings
     (entfall_published) und Eintraege ohne gueltige Geraetekombination werden
@@ -183,13 +183,16 @@ def get_next_gear(state, exclude_date=None):
     NICHT mehr verwendet (vermeidet Drift / uebersprungene Geraete)."""
     plan_data = state.get("plan_data", {})
     entfall   = set(state.get("entfall_published", []))
+    fixed_entries = fixed_entries or {}
     valid = []
     for datum_kurz, pdata in plan_data.items():
         if exclude_date and datum_kurz == exclude_date:
             continue
         if datum_kurz in entfall or not pdata:
             continue
-        g1 = pdata.get("geraet_1"); g2 = pdata.get("geraet_2")
+        _fe = fixed_entries.get(datum_kurz) or {}
+        g1 = (_fe.get("geraet_1") if isinstance(_fe, dict) else None) or pdata.get("geraet_1")
+        g2 = (_fe.get("geraet_2") if isinstance(_fe, dict) else None) or pdata.get("geraet_2")
         idx = None
         for i, (r1, r2) in enumerate(GERAETE_ROTATION):
             if r1 == g1 and r2 == g2:
@@ -750,8 +753,6 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
     active  = [g for g in ("G1","G2","G3","G4") if present[g] >= 1]
 
     anmerkungen = []
-    if "Barren" in (geraet_1, geraet_2):
-        anmerkungen.append("• Barren G3: Kippe üben")
 
     if not active:
         anmerkungen.insert(0, "ACHTUNG: Alle Turner abwesend - kein Training.")
@@ -1285,7 +1286,7 @@ def main():
             # Plan ohne gespeicherten Hash (manuell erstellt oder erste Initialisierung)
             # → Plan mit AKTUELLEN Abwesenheiten NEU ERSTELLEN (nicht nur Hash speichern)
             print(f"Plan ohne Hash fuer {datum_kurz} → Plan wird mit aktuellen Abwesenheiten erstellt.")
-            _ng_idx, _ng_g1s = get_next_gear(state, exclude_date=datum_kurz)
+            _ng_idx, _ng_g1s = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
             geraet_combo = GERAETE_ROTATION[_ng_idx]
             # plan_data mit Defaults initialisieren und stored_hash="" setzen
             # damit die Update-Logik unten sicher ausgeführt wird
@@ -1388,8 +1389,8 @@ def main():
             }
             sondertiming = {}
             anmerkungen  = []
-            if "Barren" in (geraet_1, geraet_2):
-                anmerkungen.append("• Barren G3: Kippe üben")
+            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
+            trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (UPDATE).")
         else:
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
@@ -1524,7 +1525,7 @@ def main():
 
         # Geräte-Rotation: letzte (bis zu) 8 ECHTEN Trainings ansehen, ausgefallene
         # ignorieren und genau einen Schritt weiterrücken (robust gegen Drift).
-        new_combo_idx, g1_starts_g2 = get_next_gear(state, exclude_date=datum_kurz)
+        new_combo_idx, g1_starts_g2 = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
 
         # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
@@ -1570,8 +1571,8 @@ def main():
             }
             sondertiming = {}
             anmerkungen  = []
-            if "Barren" in (geraet_1, geraet_2):
-                anmerkungen.append("• Barren G3: Kippe üben")
+            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
+            trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (NEW).")
         else:
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
