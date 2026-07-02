@@ -210,15 +210,21 @@ def get_next_gear(state, exclude_date=None, fixed_entries=None):
         return 1, True   # Sprung+Reck als sinnvoller Startpunkt
 
     valid.sort(key=lambda x: x[0])
-    last8 = valid[-8:]
-    _, last_key, last_idx, last_g1s = last8[-1]
-    next_idx = (last_idx + 1) % len(GERAETE_ROTATION)
+    # LRU-Rotation: die am laengsten NICHT geturnte Kombination kommt als naechstes.
+    # Selbstkorrigierend - uebersprungene Geraete (z.B. Sprung+Reck) werden aufgeholt;
+    # bei ausgeglichenem Verlauf ergibt sich automatisch der saubere 3er-Zyklus.
+    last_use = {}
+    for _d, _k, _idx, _g1s in valid:
+        if _idx not in last_use or _d > last_use[_idx]:
+            last_use[_idx] = _d
+    next_idx = min(range(len(GERAETE_ROTATION)),
+                   key=lambda i: (last_use.get(i, date.min), i))
+    _, last_key, last_idx, last_g1s = valid[-1]
     verlauf = ", ".join(f"{k}={GERAETE_ROTATION[i][0]}+{GERAETE_ROTATION[i][1]}"
-                        for _, k, i, _ in last8)
-    print(f"[ROTATION] Letzte {len(last8)} echten Trainings: {verlauf}")
-    print(f"[ROTATION] Juengster echter Plan {last_key} = "
-          f"{GERAETE_ROTATION[last_idx][0]}+{GERAETE_ROTATION[last_idx][1]} "
-          f"-> naechster: {GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
+                        for _, k, i, _ in valid[-8:])
+    print(f"[ROTATION-LRU] Verlauf: {verlauf}")
+    print(f"[ROTATION-LRU] Am laengsten nicht dran -> naechster: "
+          f"{GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
     return next_idx, (not last_g1s)
 
 def active_training_date():
