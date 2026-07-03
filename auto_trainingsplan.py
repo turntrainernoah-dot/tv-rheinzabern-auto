@@ -173,7 +173,7 @@ def get_gear_from_plan_data(state):
     return None, None, None
 
 
-def get_next_gear(state, exclude_date=None, fixed_entries=None):
+def get_next_gear(state, exclude_date=None):
     """Bestimmt die Geraete fuers naechste Training aus den letzten (bis zu) 8
     ECHTEN Trainingsplaenen in plan_data. Ausgefallene Trainings
     (entfall_published) und Eintraege ohne gueltige Geraetekombination werden
@@ -183,16 +183,13 @@ def get_next_gear(state, exclude_date=None, fixed_entries=None):
     NICHT mehr verwendet (vermeidet Drift / uebersprungene Geraete)."""
     plan_data = state.get("plan_data", {})
     entfall   = set(state.get("entfall_published", []))
-    fixed_entries = fixed_entries or {}
     valid = []
     for datum_kurz, pdata in plan_data.items():
         if exclude_date and datum_kurz == exclude_date:
             continue
         if datum_kurz in entfall or not pdata:
             continue
-        _fe = fixed_entries.get(datum_kurz) or {}
-        g1 = (_fe.get("geraet_1") if isinstance(_fe, dict) else None) or pdata.get("geraet_1")
-        g2 = (_fe.get("geraet_2") if isinstance(_fe, dict) else None) or pdata.get("geraet_2")
+        g1 = pdata.get("geraet_1"); g2 = pdata.get("geraet_2")
         idx = None
         for i, (r1, r2) in enumerate(GERAETE_ROTATION):
             if r1 == g1 and r2 == g2:
@@ -210,33 +207,24 @@ def get_next_gear(state, exclude_date=None, fixed_entries=None):
         return 1, True   # Sprung+Reck als sinnvoller Startpunkt
 
     valid.sort(key=lambda x: x[0])
-    # LRU-Rotation: die am laengsten NICHT geturnte Kombination kommt als naechstes.
-    # Selbstkorrigierend - uebersprungene Geraete (z.B. Sprung+Reck) werden aufgeholt;
-    # bei ausgeglichenem Verlauf ergibt sich automatisch der saubere 3er-Zyklus.
-    last_use = {}
-    for _d, _k, _idx, _g1s in valid:
-        if _idx not in last_use or _d > last_use[_idx]:
-            last_use[_idx] = _d
-    next_idx = min(range(len(GERAETE_ROTATION)),
-                   key=lambda i: (last_use.get(i, date.min), i))
-    _, last_key, last_idx, last_g1s = valid[-1]
+    last8 = valid[-8:]
+    _, last_key, last_idx, last_g1s = last8[-1]
+    next_idx = (last_idx + 1) % len(GERAETE_ROTATION)
     verlauf = ", ".join(f"{k}={GERAETE_ROTATION[i][0]}+{GERAETE_ROTATION[i][1]}"
-                        for _, k, i, _ in valid[-8:])
-    print(f"[ROTATION-LRU] Verlauf: {verlauf}")
-    print(f"[ROTATION-LRU] Am laengsten nicht dran -> naechster: "
-          f"{GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
+                        for _, k, i, _ in last8)
+    print(f"[ROTATION] Letzte {len(last8)} echten Trainings: {verlauf}")
+    print(f"[ROTATION] Juengster echter Plan {last_key} = "
+          f"{GERAETE_ROTATION[last_idx][0]}+{GERAETE_ROTATION[last_idx][1]} "
+          f"-> naechster: {GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
     return next_idx, (not last_g1s)
 
 def active_training_date():
-    """Aktuell relevanter Trainingstag.
-    - Trainingstag (Mi/Fr) TAGSUEBER: HEUTE (damit ein am Trainingstag markierter
-      Entfall noch veroeffentlicht wird und Updates auf den heutigen Plan wirken).
-    - Trainingstag ABENDS im Veroeffentlichungsfenster (>=22:00 CEST, Training
-      vorbei): der NAECHSTE Trainingstag -> Mi-Abend erzeugt bereits den
-      Freitagsplan, Fr-Abend den naechsten Mittwochsplan.
-    - Sonst: der naechste Mi/Fr."""
+    """Aktuell relevanter Trainingstag: an einem Trainingstag (Mi/Fr) ist das
+    HEUTE (bis der Tag vorbei ist), damit ein erst am Trainingstag markierter
+    Entfall noch veroeffentlicht wird und nicht das naechste Training vorgezogen
+    wird. Sonst der naechste Mi/Fr."""
     t = date.today()
-    if t.weekday() in (2, 4) and not is_publication_window():
+    if t.weekday() in (2, 4):
         return t
     return next_training_date()
 
@@ -573,47 +561,6 @@ def timing_annotations(trainer_timing):
         lines.append(f"• {head}: {notiz}" if notiz else f"• {head}")
     return lines
 
-def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
-    """Freien Trainer fuer 'slot' finden: erst Springer, dann Auf-/Abbau.
-    Wer in diesem Slot selbst spaet/frueh geblockt ist, scheidet aus."""
-    def blocked_at(t):
-        info = trainer_timing.get(t)
-        return bool(info) and slot in info.get("blocked", [])
-    for want in ("springer", "aufbauen"):
-        for t, plan in trainer_plan.items():
-            if t == exclude or not plan or slot >= len(plan):
-                continue
-            if blocked_at(t):
-                continue
-            _txt, ck = plan[slot]
-            if ck == want:
-                return t
-    return None
-
-def apply_timing_coverage(trainer_plan, trainer_timing):
-    """Vertretung: geht ein Trainer frueher / kommt spaeter, uebernimmt fuer die
-    fehlenden Slots ein freier Trainer (bevorzugt der Springer) dessen Gruppe.
-    Der Springer verlaesst dafuer kurz seine Julian-Bereitschaft (laut Noah ok).
-    MUSS VOR apply_timing_blocks laufen (liest die Original-Gruppenzelle)."""
-    if not trainer_timing:
-        return trainer_plan
-    GRUPPEN_COLORS = {"aufwaermen", "g1_blau", "g1_gruen", "g2_orange", "g2_lila"}
-    for name, info in trainer_timing.items():
-        plan = trainer_plan.get(name)
-        if not plan:
-            continue
-        for i in sorted(info.get("blocked", [])):
-            if not (0 <= i < len(plan)):
-                continue
-            text, ck = plan[i]
-            if ck not in GRUPPEN_COLORS:
-                continue
-            coverer = _find_free_coverer(trainer_plan, trainer_timing, i, exclude=name)
-            if coverer:
-                p = list(trainer_plan[coverer]); p[i] = (text, ck); trainer_plan[coverer] = p
-    return trainer_plan
-
-
 def apply_timing_blocks(trainer_plan, trainer_timing):
     """Ueberschreibt geblockte Slots verspaeteter/frueher gehender Trainer ROT mit
     'kommt später'/'geht früher'. Trainer bleibt eingeteilt (NICHT abwesend)."""
@@ -685,7 +632,7 @@ def detect_complex(absences, late_notes):
     if n <= 3:
         soft_warnings.append((f"low_trainer_{n}",
             f"Nur {n} Trainer anwesend ({', '.join(anwesend_trainer) or '-'}). "
-            f"Gruppen werden automatisch sinnvoll zusammengelegt."))
+            f"Gruppen automatisch zusammengelegt, alle trainieren 17:00-19:00."))
     for gruppe, names in absences.items():
         for name in names:
             if name not in ALLE_BEKANNTEN_NAMES:
@@ -754,111 +701,135 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
     available = [t for t in ALLE_TRAINER if t not in abwesend]
     n = len(available)
 
-    # anwesende Kinder je Gruppe
-    present = {g: max(0, len(ALLE_TURNER[g]) - len(absences.get(g, []))) for g in ("G1","G2","G3","G4")}
-    active  = [g for g in ("G1","G2","G3","G4") if present[g] >= 1]
+    if n <= 3:
+        return _build_lowstaff_plan(available, abwesend)
 
-    anmerkungen = []
+    merge_g23 = (n == 3)
 
-    if not active:
-        anmerkungen.insert(0, "ACHTUNG: Alle Turner abwesend - kein Training.")
-        return {t: None for t in ALLE_TRAINER}, {}, anmerkungen
-    if n == 0:
-        anmerkungen.insert(0, "ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
-        return {t: None for t in ALLE_TRAINER}, {}, anmerkungen
-
-    # ---- Einheiten bilden ----
-    units = [[g] for g in active]
-    def ucount(u): return sum(present[g] for g in u)
-    def crosses(a, b): return a[-1] == "G2" and b[0] == "G3"   # G2|G3-Grenze = last resort
-    def best_merge(units):
-        best = None
-        for i in range(len(units)-1):
-            a, b = units[i], units[i+1]
-            combined = ucount(a) + ucount(b)
-            score = combined + (1000 if crosses(a, b) else 0)
-            if best is None or score < best[0]:
-                best = (score, i, combined)
-        return best
-    # zu wenig Trainer -> zusammenlegen bis units <= n
-    while len(units) > n:
-        _, i, _ = best_merge(units)
-        units[i] = units[i] + units[i+1]; del units[i+1]
-
-    # ---- Julian-Springer-Prinzip ----
-    julian_present = any(t.startswith("Julian") for t in available)
-    if julian_present and (n - len(units)) == 0 and len(units) >= 2:
-        bm = best_merge(units)
-        if bm is not None and bm[2] <= 8:      # nur wenn zusammengelegte Gruppe <= 8 Kids
-            _, i, _ = bm
-            units[i] = units[i] + units[i+1]; del units[i+1]
-
-    # G4-Zeit-Hinweis, wenn G4 in einer Zusammenlegung ist
-    if any(len(u) >= 2 and "G4" in u for u in units):
-        anmerkungen.append("Gruppe 4 hat zwischen 17:00-19:00 Training")
-
-    # ---- Trainer den Einheiten zuordnen ----
+    assignment = {}
     pool = list(available)
-    def pop_first(name):
-        for i, t in enumerate(pool):
-            if t.startswith(name): return pool.pop(i)
-        return None
-    def unit_with(g):
-        for idx, u in enumerate(units):
-            if g in u: return idx
-        return None
-    noah = pop_first("Noah"); andy = pop_first("Andy"); julian = pop_first("Julian")
-    order = [t for t in (noah, andy, julian) if t] + pool
-    pref = {}
-    if noah: pref[noah] = unit_with("G1")
-    if andy: pref[andy] = unit_with("G4")
 
-    taken = set(); assigned = {}; springers = []
-    for t in order:
-        idx = pref.get(t)
-        if idx is None or idx in taken:
-            idx = next((j for j in range(len(units)) if j not in taken), None)
-        if idx is None:
-            springers.append(t)
-        else:
-            assigned[t] = idx; taken.add(idx)
+    # Suche nach Vorname (robust gegen Namensformat-Änderungen)
+    def pop_by_first(lst, first_name):
+        for i, t in enumerate(lst):
+            if t.startswith(first_name):
+                return lst.pop(i)
+        return None
 
-    # ---- Farben / Templates ----
+    noah = pop_by_first(pool, "Noah")
+    if noah:
+        assignment[noah] = "G1"
+    else:
+        assignment[pool.pop(0)] = "G1"
+
+    andy = pop_by_first(pool, "Andy")
+    if andy:
+        g4_trainer = andy
+    elif pool:
+        g4_trainer = pool.pop(-1)
+    else:
+        g4_trainer = None
+
+    if g4_trainer:
+        assignment[g4_trainer] = "G4"
+
+    if merge_g23:
+        if pool:
+            assignment[pool.pop(0)] = "G2+G3"
+    else:
+        for gruppe in ("G2", "G3"):
+            if pool:
+                assignment[pool.pop(0)] = gruppe
+        for t in pool:
+            assignment[t] = "Springer"
+
     def farbe(gruppe, phase):
         if g1_starts_geraet2:
-            m = ({"G1":"g2_orange","G2":"g1_blau","G3":"g1_blau"} if phase==1
-                 else {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"})
+            if phase == 1:
+                return {"G1":"g2_orange","G2":"g1_blau","G3":"g1_blau",
+                        "G2+G3":"g1_blau"}.get(gruppe,"aufbauen")
+            else:
+                return {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange",
+                        "G2+G3":"g2_lila"}.get(gruppe,"aufbauen")
         else:
-            m = ({"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"} if phase==1
-                 else {"G1":"g2_orange","G2":"g2_lila","G3":"g1_blau"})
-        return m.get(gruppe, "aufbauen")
-    G4_SLOT3, G4_SLOT4 = "g1_gruen", "g2_orange"
-    PALETTE = ["g1_blau", "g2_orange", "g1_gruen", "g2_lila"]
+            if phase == 1:
+                return {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange",
+                        "G2+G3":"g2_lila"}.get(gruppe,"aufbauen")
+            else:
+                return {"G1":"g2_orange","G2":"g2_lila","G3":"g1_blau",
+                        "G2+G3":"g1_blau"}.get(gruppe,"aufbauen")
 
-    def label_of(u):
-        return "Alle Gruppen" if len(u) == 4 else "+".join(u)
-    def tpl_single(g):
-        return [("AW "+g,"aufwaermen"),(g,farbe(g,1)),(g,farbe(g,1)),(g,farbe(g,2)),("Abbauen","aufbauen")]
-    def tpl_g4():
-        return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",G4_SLOT3),("G4",G4_SLOT4)]
-    def tpl_merged(label, col):
-        return [("AW "+label,"aufwaermen"),(label,col),(label,col),(label,col),("Abbauen","aufbauen")]
-    def tpl_springer():
-        return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
+    G4_SLOT3 = "g1_gruen"
+    G4_SLOT4 = "g2_orange"
 
     TRAINER_PLAN = {}
-    for t in ALLE_TRAINER:
-        if t not in assigned and t not in springers:
-            TRAINER_PLAN[t] = None; continue
-        if t in springers:
-            TRAINER_PLAN[t] = tpl_springer(); continue
-        u = units[assigned[t]]
-        if u == ["G4"]:
-            TRAINER_PLAN[t] = tpl_g4()
-        elif len(u) == 1:
-            TRAINER_PLAN[t] = tpl_single(u[0])
-        else:
-            TRAINER_PLAN[t] = tpl_merged(label_of(u), PALETTE[assigned[t] % len(PALETTE)])
+    for trainer in ALLE_TRAINER:
+        if trainer in abwesend:
+            TRAINER_PLAN[trainer] = None
+            continue
+        if trainer not in assignment:
+            TRAINER_PLAN[trainer] = None
+            continue
+
+        grp = assignment[trainer]
+
+        if grp == "G1":
+            TRAINER_PLAN[trainer] = [
+                ("AW G1",    "aufwaermen"),
+                ("G1",       farbe("G1", 1)),
+                ("G1",       farbe("G1", 1)),
+                ("G1",       farbe("G1", 2)),
+                ("Abbauen",  "aufbauen"),
+            ]
+        elif grp == "G2+G3":
+            TRAINER_PLAN[trainer] = [
+                ("AW G2+G3", "aufwaermen"),
+                ("G2+G3",    farbe("G2+G3", 1)),
+                ("G2+G3",    farbe("G2+G3", 1)),
+                ("G2+G3",    farbe("G2+G3", 2)),
+                ("Abbauen",  "aufbauen"),
+            ]
+        elif grp == "G2":
+            TRAINER_PLAN[trainer] = [
+                ("AW G2",    "aufwaermen"),
+                ("G2",       farbe("G2", 1)),
+                ("G2",       farbe("G2", 1)),
+                ("G2",       farbe("G2", 2)),
+                ("Abbauen",  "aufbauen"),
+            ]
+        elif grp == "G3":
+            TRAINER_PLAN[trainer] = [
+                ("AW G3",    "aufwaermen"),
+                ("G3",       farbe("G3", 1)),
+                ("G3",       farbe("G3", 1)),
+                ("G3",       farbe("G3", 2)),
+                ("Abbauen",  "aufbauen"),
+            ]
+        elif grp == "G4":
+            TRAINER_PLAN[trainer] = [
+                ("Aufbauen", "aufbauen"),
+                ("AW G4",    "aufwaermen"),
+                ("AW G4",    "aufwaermen"),
+                ("G4",       G4_SLOT3),
+                ("G4",       G4_SLOT4),
+            ]
+        elif grp == "Springer":
+            TRAINER_PLAN[trainer] = [
+                ("Aufbauen", "aufbauen"),
+                ("Springer", "springer"),
+                ("Springer", "springer"),
+                ("Springer", "springer"),
+                ("Abbauen",  "aufbauen"),
+            ]
+
+    andy_full = next((t for t in available if t.startswith("Andy")), None)
+    if andy_full and assignment.get(andy_full) == "Springer":
+        if TRAINER_PLAN.get(andy_full):
+            TRAINER_PLAN[andy_full][4] = ("G4", G4_SLOT4)
+
+    anmerkungen = []
+    if "Barren" in (geraet_1, geraet_2):
+        anmerkungen.append("• Barren G3: Kippe üben")
 
     return TRAINER_PLAN, {}, anmerkungen
 
@@ -1166,6 +1137,193 @@ def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, pa
 
 
 
+# ════════════════════════════════════════════════════════════════
+#  MINI-KI: freie Trainer-Anmerkungen -> Planaenderungen (GitHub Models)
+# ════════════════════════════════════════════════════════════════
+GH_MODELS_ENDPOINT = os.environ.get("GH_MODELS_ENDPOINT", "https://models.github.ai/inference/chat/completions")
+GH_MODELS_MODEL    = os.environ.get("GH_MODELS_MODEL", "openai/gpt-4o-mini")
+
+def _ki_token():
+    return os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+
+def _ki_call(messages, token, timeout=60):
+    body = json.dumps({"model": GH_MODELS_MODEL, "messages": messages,
+                       "temperature": 0, "response_format": {"type": "json_object"}}).encode("utf-8")
+    req = urllib.request.Request(GH_MODELS_ENDPOINT, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("Accept", "application/json")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))["choices"][0]["message"]["content"]
+
+_KI_PROMPT = """Du wandelst eine freie Trainer-Anmerkung fuer einen Kinder-Turntrainingsplan in striktes JSON um.
+
+Kontext:
+- Gruppen: <GR>
+- Trainer: <TR>
+- Geraete: <GE>
+- Heute/naechstes Training: <NEXT>
+- Diese Anmerkung stammt vom Trainer: "<WRITER>". "ich"/"mich"/"mir"/"meine" bezieht sich immer auf diesen Trainer.
+
+Gib GENAU dieses JSON zurueck (keine weiteren Felder, kein Text drumherum):
+{"ziel": {"typ": "naechstes | datum | naechstes_geraet", "datum": "TT.MM.JJJJ oder null", "geraet": "Geraetename oder null"}, "notiz": "reiner Hinweistext oder null", "geraete": {"g1": "Geraet", "g2": "Geraet"} , "gruppe_entfall": ["G3"], "timing": [{"trainer": "Name", "richtung": "spaet | frueh", "uhrzeit": "HH:MM oder null"}], "zuteilung": [{"trainer": "Name", "gruppe": "z.B. G1, G2+G3 oder Springer"}], "unsicher": true}
+
+Regeln:
+- ziel.typ: KEIN Datum/Zeitpunkt genannt -> "naechstes" (gilt NUR fuer genau das naechste Training, NIE Dauerauftrag). Konkretes Datum (z.B. "am 14.10") -> "datum" mit datum. "naechstes Mal <Geraet>" / "wenn wir <Geraet> turnen" -> "naechstes_geraet" mit geraet. Wenn ziel unklar -> typ "naechstes".
+- "kommt spaeter"/"erst um X" -> timing richtung "spaet"; "geht frueher"/"muss um X weg/los" -> "frueh". uhrzeit als HH:MM oder null.
+- "GX entfaellt"/"faellt aus" -> gruppe_entfall ["GX"].
+- Geraetewahl "wir turnen X und Y" -> geraete {"g1":X,"g2":Y}, sonst geraete null.
+- Trainer einer Gruppe/zusammengelegten Gruppe/Rolle zuordnen -> zuteilung. gruppe darf "Springer" oder "GX+GY" sein. "ich mache ..." -> trainer = der Schreiber.
+- Reiner Hinweis ("schreibe/bitte ...") -> nur notiz.
+- Nur Namen aus der Trainerliste, nur Gruppen aus der Gruppenliste, nur Geraete aus der Geraeteliste.
+- Keine Aktion in einem Feld: leere Liste [] bzw. null. Bei Unklarheit unsicher=true und notiz=Originaltext.
+- Antworte ausschliesslich mit dem JSON-Objekt."""
+
+def _ki_system_prompt(writer, next_date_str):
+    gr = ", ".join(ALLE_TURNER.keys())
+    tr = ", ".join(ALLE_TRAINER)
+    ge = ", ".join(sorted({g for c in GERAETE_ROTATION for g in c}))
+    return (_KI_PROMPT.replace("<GR>", gr).replace("<TR>", tr).replace("<GE>", ge)
+            .replace("<NEXT>", next_date_str).replace("<WRITER>", writer or "?"))
+
+def ki_analyze(notiz, writer, next_date_str, token):
+    content = _ki_call([{"role": "system", "content": _ki_system_prompt(writer, next_date_str)},
+                        {"role": "user", "content": notiz}], token)
+    return json.loads(content)
+
+def _ki_full_name(short):
+    s = (short or "").strip()
+    if s in ALLE_TRAINER:
+        return s
+    return WEBSITE_TO_DISPLAY.get(s, s)
+
+def _ki_time_min(s):
+    m = re.search(r'(\d{1,2})[:.](\d{2})', s or "")
+    if m:
+        h, mi = int(m.group(1)), int(m.group(2))
+        if 0 <= h < 24 and 0 <= mi < 60:
+            return h * 60 + mi
+    return None
+
+def ki_timing_to_dict(timing_list):
+    out = {}
+    for tm in (timing_list or []):
+        name = _ki_full_name(tm.get("trainer", ""))
+        if name not in ALLE_TRAINER:
+            continue
+        kind = "spaet" if tm.get("richtung") == "spaet" else "frueh"
+        t = _ki_time_min(tm.get("uhrzeit"))
+        blocked = compute_blocked_slots(kind, t)
+        out[name] = {"kind": kind, "time_min": t,
+                     "time_str": (f"{t//60:02d}:{t%60:02d}" if t is not None else None),
+                     "notiz": "", "blocked": sorted(blocked)}
+    return out
+
+def _ki_next_training_after(d):
+    d = d + timedelta(days=1)
+    while d.weekday() not in (2, 4):
+        d += timedelta(days=1)
+    return d
+
+def ki_resolve_target(ziel, state):
+    ziel = ziel or {}
+    typ = ziel.get("typ") or "naechstes"
+    if typ == "datum" and ziel.get("datum"):
+        for fmt in ("%d.%m.%Y", "%d.%m.%y"):
+            try:
+                return datetime.strptime(ziel["datum"], fmt).date().strftime("%d.%m.%y")
+            except Exception:
+                pass
+    if typ == "naechstes_geraet" and ziel.get("geraet"):
+        g = ziel["geraet"]
+        try:
+            idx, _ = get_next_gear(state, exclude_date=None)
+        except Exception:
+            idx = state.get("geraet_combo_index", 0)
+        d = active_training_date()
+        for _ in range(24):
+            if g in GERAETE_ROTATION[idx % len(GERAETE_ROTATION)]:
+                return d.strftime("%d.%m.%y")
+            d = _ki_next_training_after(d)
+            idx += 1
+    return active_training_date().strftime("%d.%m.%y")
+
+def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
+    """Analysiert jede ungelesene Anmerkung per KI und schreibt die Aenderung in
+    fixed_entries[Zieldatum] (bestehender Admin-Mechanismus). Einmalig pro Datum."""
+    token = _ki_token()
+    if not token or not anmerkungen_server:
+        return
+    next_date_str = active_training_date().strftime("%d.%m.%Y")
+    allowed_ger = {g for c in GERAETE_ROTATION for g in c}
+    processed_ids = []
+    changed = False
+    for a in list(anmerkungen_server):
+        notiz = (a.get("notiz") or "").strip()
+        writer = a.get("trainer", "")
+        if not notiz:
+            continue
+        try:
+            res = ki_analyze(notiz, writer, next_date_str, token)
+        except Exception as e:
+            print(f"[KI] Analyse fehlgeschlagen ({writer}): {e}")
+            continue
+        try:
+            dk = ki_resolve_target(res.get("ziel"), state)
+            fe = fixed_entries.setdefault(dk, {})
+            fe["manuell_bearbeitet"] = True
+            fe["quelle"] = "ki"
+            ki = fe.setdefault("ki", {})
+            note_lines = []
+            ge = res.get("geraete")
+            if ge and ge.get("g1") in allowed_ger and ge.get("g2") in allowed_ger:
+                fe["geraet_1"] = ge["g1"]
+                fe["geraet_2"] = ge["g2"]
+            fa = fe.setdefault("fixed_absences", {})
+            for g in (res.get("gruppe_entfall") or []):
+                if g in ALLE_TURNER:
+                    fa.setdefault(g, [])
+                    for t in ALLE_TURNER[g]:
+                        if t not in fa[g]:
+                            fa[g].append(t)
+                    note_lines.append(f"{g} entfaellt")
+            if res.get("timing"):
+                ki["timing"] = res["timing"]
+                for tm in res["timing"]:
+                    ri = "kommt spaeter" if tm.get("richtung") == "spaet" else "geht frueher"
+                    uh = tm.get("uhrzeit")
+                    note_lines.append(f"{tm.get('trainer','')} {ri}" + (f" {uh}" if uh else ""))
+            for z in (res.get("zuteilung") or []):
+                if z.get("trainer") and z.get("gruppe"):
+                    note_lines.append(f"{z['trainer']}: {z['gruppe']}")
+            base_note = (res.get("notiz") or "").strip()
+            allnotes = [x for x in (([base_note] if base_note else []) + note_lines) if x]
+            if allnotes:
+                prev = (fe.get("notiz") or "").strip()
+                fe["notiz"] = (prev + "\n" if prev else "") + "\n".join(allnotes)
+            if a.get("id"):
+                processed_ids.append(a["id"])
+            if a in anmerkungen_server:
+                anmerkungen_server.remove(a)
+            changed = True
+            print(f"[KI] '{notiz[:45]}' ({writer}) -> {dk}")
+        except Exception as e:
+            print(f"[KI] Anwenden fehlgeschlagen: {e}")
+    if changed:
+        try:
+            f = sftp.open("fixed_entries.json", "wb")
+            f.write(json.dumps(fixed_entries, indent=2, ensure_ascii=False).encode("utf-8"))
+            f.close()
+            print("[KI] fixed_entries.json aktualisiert.")
+        except Exception as e:
+            print(f"[KI] fixed_entries Upload fehlgeschlagen: {e}")
+    if processed_ids:
+        try:
+            mark_anmerkungen_gelesen(sftp, [i for i in processed_ids if i])
+        except Exception as e:
+            print(f"[KI] mark gelesen fehlgeschlagen: {e}")
+
+
 def main():
     print(f"=== TV Rheinzabern Auto-Trainingsplan | {date.today()} ===\n")
 
@@ -1195,6 +1353,12 @@ def main():
     late_notes = late_notes + timing_annotations(trainer_timing)
     # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
     new_hash = raw_abm_hash
+
+    # -- Mini-KI: freie Trainer-Anmerkungen analysieren und in fixed_entries anwenden --
+    try:
+        ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state)
+    except Exception as _kie:
+        print(f"[KI] uebersprungen: {_kie}")
 
     # Fixed entries anwenden (erzwingt Abwesenheiten, die das Auto-System nicht ändern darf)
     fixed_for_date = fixed_entries.get(datum_kurz, {})
@@ -1261,6 +1425,9 @@ def main():
         _g2 = fixed_for_date.get("geraet_2") or "Barren"
         _g1s = fixed_for_date.get("g1_starts_geraet2", state.get("g1_starts_geraet2", False))
         _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, fixed_for_date.get("fixed_trainer_partial") or {})
+        _kt = ki_timing_to_dict((fixed_for_date.get("ki") or {}).get("timing"))
+        if _kt:
+            _base_tp = apply_timing_blocks(_base_tp, _kt)
         fixed_for_date["fixed_trainer_plan"] = _base_tp
         fixed_for_date["lock_trainer_plan"] = True
         lock_trainer = True
@@ -1292,7 +1459,7 @@ def main():
             # Plan ohne gespeicherten Hash (manuell erstellt oder erste Initialisierung)
             # → Plan mit AKTUELLEN Abwesenheiten NEU ERSTELLEN (nicht nur Hash speichern)
             print(f"Plan ohne Hash fuer {datum_kurz} → Plan wird mit aktuellen Abwesenheiten erstellt.")
-            _ng_idx, _ng_g1s = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
+            _ng_idx, _ng_g1s = get_next_gear(state, exclude_date=datum_kurz)
             geraet_combo = GERAETE_ROTATION[_ng_idx]
             # plan_data mit Defaults initialisieren und stored_hash="" setzen
             # damit die Update-Logik unten sicher ausgeführt wird
@@ -1395,14 +1562,13 @@ def main():
             }
             sondertiming = {}
             anmerkungen  = []
-            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
-            trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
+            if "Barren" in (geraet_1, geraet_2):
+                anmerkungen.append("• Barren G3: Kippe üben")
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (UPDATE).")
         else:
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
                 absences, geraet_1, geraet_2, g1_starts_g2
             )
-            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
@@ -1504,20 +1670,13 @@ def main():
         now_utc   = datetime.now(timezone.utc)
         days_away = (training_date - date.today()).days
 
-        # Sicherheitsnetz: Steht das naechste Training unmittelbar bevor (<=1 Tag)
-        # und existiert noch KEIN Plan, wird sofort erzeugt - auch ausserhalb des
-        # 22:00-Fensters. So bleibt kein Training ohne Plan, falls das regulaere
-        # Mi/Fr-Abendfenster verpasst wurde.
-        imminent = days_away <= 1
-        if not is_publication_window() and not force_regen and not imminent:
+        if not is_publication_window() and not force_regen:
             print(
                 f"Kein Plan vorhanden, aber außerhalb Publikationsfenster "
                 f"({now_utc.strftime('%H:%M')} UTC, Wochentag {now_utc.weekday()}) → warte bis Mi/Fr 22:00 CEST."
             )
             sftp.close(); ssh.close()
             return
-        if imminent and not is_publication_window() and not force_regen:
-            print(f"[SICHERHEITSNETZ] Training in {days_away} Tag(en), kein Plan → erstelle sofort (Fenster uebergangen).")
 
         if days_away > 5 and not force_regen:
             print(
@@ -1531,7 +1690,7 @@ def main():
 
         # Geräte-Rotation: letzte (bis zu) 8 ECHTEN Trainings ansehen, ausgefallene
         # ignorieren und genau einen Schritt weiterrücken (robust gegen Drift).
-        new_combo_idx, g1_starts_g2 = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
+        new_combo_idx, g1_starts_g2 = get_next_gear(state, exclude_date=datum_kurz)
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
 
         # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
@@ -1577,14 +1736,13 @@ def main():
             }
             sondertiming = {}
             anmerkungen  = []
-            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
-            trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
+            if "Barren" in (geraet_1, geraet_2):
+                anmerkungen.append("• Barren G3: Kippe üben")
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (NEW).")
         else:
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
                 absences, geraet_1, geraet_2, g1_starts_g2
             )
-            trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
 
         # Verspätungen / frühes Gehen als Hinweis eintragen
