@@ -1,0 +1,2611 @@
+[
+    {
+        "id": "acb9875229",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-05-20",
+        "notiz": "",
+        "ts": "17.05.2026 22:51"
+    },
+    {
+        "id": "780ae0f343",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-05-20",
+        "notiz": "Geschlechtsreise 😂",
+        "ts": "18.05.2026 06:27"
+    },
+    {
+        "id": "f43c1c9d72",
+        "name": "Ilyas",
+        "gruppe": "G1",
+        "datum": "2026-05-13",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "18.05.2026 18:32 (nachgetragen)"
+    },
+    {
+        "id": "0df6215cd6",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-05-13",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "18.05.2026 18:32 (nachgetragen)"
+    },
+    {
+        "id": "4c66091742",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-05-13",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "18.05.2026 18:32 (nachgetragen)"
+    },
+    {
+        "id": "97776b778c",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-05-13",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "18.05.2026 18:32 (nachgetragen)"
+    },
+    {
+        "id": "ea95232296",
+        "name": "Jamie",
+        "gruppe": "G4",
+        "datum": "2026-05-13",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "18.05.2026 18:32 (nachgetragen)"
+    },
+    {
+        "id": "968655d30a",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-13",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "18.05.2026 18:32 (nachgetragen)"
+    },
+    {
+        "id": "84920fa192",
+        "name": "Ben",
+        "gruppe": "G3",
+        "datum": "2026-05-22",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "19.05.2026 15:08"
+    },
+    {
+        "id": "c789012962",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-05-20",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "19.05.2026 16:06"
+    },
+    {
+        "id": "a9da96c3d0",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-20",
+        "notiz": "Nur bis 18:15 da",
+        "verspaetung": true,
+        "ts": "19.05.2026 21:08 (nachgetragen)"
+    },
+    {
+        "id": "26f14e844c",
+        "name": "Torben",
+        "gruppe": "Trainer",
+        "datum": "2026-05-20",
+        "notiz": "Auf unvorhersehbare Zeit verspätet",
+        "verspaetung": true,
+        "ts": "19.05.2026 21:43 (nachgetragen)"
+    },
+    {
+        "id": "8db153fb97",
+        "name": "Julian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-20",
+        "notiz": "Komme um 17:15 Uhr ca.",
+        "verspaetung": true,
+        "ts": "19.05.2026 22:35 (nachgetragen)"
+    },
+    {
+        "id": "3d3b855b00",
+        "name": "Artem",
+        "gruppe": "G3",
+        "datum": "2026-05-22",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "20.05.2026 07:51"
+    },
+    {
+        "id": "84ff75aa4c",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-20",
+        "notiz": "Ich bin über die Nacht krank geworden",
+        "verspaetung": false,
+        "ts": "20.05.2026 08:18"
+    },
+    {
+        "id": "fef99580bd",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-05-20",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "20.05.2026 14:07"
+    },
+    {
+        "id": "e27af38ea6",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-27",
+        "notiz": "Spätschicht",
+        "verspaetung": false,
+        "ts": "22.05.2026 08:36"
+    },
+    {
+        "id": "4f0e09fa59",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-29",
+        "notiz": "Spätschicht",
+        "verspaetung": false,
+        "ts": "22.05.2026 08:36"
+    },
+    {
+        "id": "0e5d602f16",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-05-22",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "22.05.2026 09:32"
+    },
+    {
+        "id": "51a48f9488",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-05-22",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "22.05.2026 09:33"
+    },
+    {
+        "id": "c7be1fd39f",
+        "name": "Julian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-29",
+        "notiz": "Fußballspiel",
+        "verspaetung": false,
+        "ts": "22.05.2026 11:04"
+    },
+    {
+        "id": "6958f7e987",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-05-22",
+        "notiz": "Ich komme vorbei mache aber ruhig",
+        "verspaetung": true,
+        "ts": "22.05.2026 14:49"
+    },
+    {
+        "id": "0c25e3e489",
+        "name": "Mika",
+        "gruppe": "G4",
+        "datum": "2026-05-29",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "22.05.2026 20:12"
+    },
+    {
+        "id": "a8177f77cf",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-06-05",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "22.05.2026 22:03"
+    },
+    {
+        "id": "7f9a44ee22",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-06-05",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "22.05.2026 22:38"
+    },
+    {
+        "id": "679c1b6d2d",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-06-05",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "23.05.2026 09:02"
+    },
+    {
+        "id": "ac206e2204",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-05-27",
+        "notiz": "Felix hat am Mi Geburtstag und Freitag feiert er 🥳",
+        "verspaetung": false,
+        "ts": "25.05.2026 11:43"
+    },
+    {
+        "id": "576ff6d391",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-05-29",
+        "notiz": "Felix hat am Mi Geburtstag und Freitag feiert er 🥳",
+        "verspaetung": false,
+        "ts": "25.05.2026 11:43"
+    },
+    {
+        "id": "614eb3ba04",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-05-29",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "25.05.2026 15:35"
+    },
+    {
+        "id": "27fda53416",
+        "name": "Michael",
+        "gruppe": "G3",
+        "datum": "2026-05-27",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "26.05.2026 21:06"
+    },
+    {
+        "id": "217cc07ece",
+        "name": "Erik",
+        "gruppe": "G3",
+        "datum": "2026-05-27",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "27.05.2026 08:13"
+    },
+    {
+        "id": "be9954285f",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-06-03",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "27.05.2026 12:48"
+    },
+    {
+        "id": "ebd589a0cc",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-06-05",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "27.05.2026 12:48"
+    },
+    {
+        "id": "30c65e031b",
+        "name": "Levent",
+        "gruppe": "G2",
+        "datum": "2026-06-12",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "27.05.2026 14:52"
+    },
+    {
+        "id": "20c3c87256",
+        "name": "Artem",
+        "gruppe": "G3",
+        "datum": "2026-05-27",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "27.05.2026 19:13"
+    },
+    {
+        "id": "818e97dbe3",
+        "name": "Hannes",
+        "gruppe": "G1",
+        "datum": "2026-06-03",
+        "notiz": "Sommerurlaub",
+        "verspaetung": false,
+        "ts": "28.05.2026 05:52"
+    },
+    {
+        "id": "24a9cff26f",
+        "name": "Hannes",
+        "gruppe": "G1",
+        "datum": "2026-06-05",
+        "notiz": "Sommerurlaub",
+        "verspaetung": false,
+        "ts": "28.05.2026 05:52"
+    },
+    {
+        "id": "db35144145",
+        "name": "Hannes",
+        "gruppe": "G1",
+        "datum": "2026-06-10",
+        "notiz": "Sommerurlaub",
+        "verspaetung": false,
+        "ts": "28.05.2026 05:52"
+    },
+    {
+        "id": "b480c252d0",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-05-29",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "29.05.2026 00:41"
+    },
+    {
+        "id": "0cfa5f36fb",
+        "name": "Ilyas",
+        "gruppe": "G1",
+        "datum": "2026-05-29",
+        "notiz": "Privater Termin",
+        "verspaetung": false,
+        "ts": "29.05.2026 06:51"
+    },
+    {
+        "id": "6775ecd54b",
+        "name": "Julian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-03",
+        "notiz": "Nur bis 19:00 da (Geburtstag)",
+        "verspaetung": true,
+        "ts": "02.06.2026 10:49 (nachgetragen)"
+    },
+    {
+        "id": "7b472f43d8",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-06-03",
+        "notiz": "Nur bis 19:00 da (Geburtstag)",
+        "verspaetung": true,
+        "ts": "02.06.2026 10:49 (nachgetragen)"
+    },
+    {
+        "id": "f4281304c1",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-06-05",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "03.06.2026 08:57"
+    },
+    {
+        "id": "cb09fba1b2",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "03.06.2026 08:57"
+    },
+    {
+        "id": "ade53aa58a",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "03.06.2026 08:57"
+    },
+    {
+        "id": "19fc43d720",
+        "name": "Ben",
+        "gruppe": "G3",
+        "datum": "2026-06-05",
+        "notiz": "Verreist",
+        "verspaetung": false,
+        "ts": "03.06.2026 11:57"
+    },
+    {
+        "id": "53385d4abd",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-05",
+        "notiz": "Italien",
+        "verspaetung": false,
+        "ts": "03.06.2026 14:08"
+    },
+    {
+        "id": "acde2a2b87",
+        "name": "Torben",
+        "gruppe": "Trainer",
+        "datum": "2026-06-05",
+        "notiz": "",
+        "verspaetung": false,
+        "ts": "04.06.2026 19:17"
+    },
+    {
+        "id": "8ba6ef85ca",
+        "name": "Ilyas",
+        "gruppe": "G1",
+        "datum": "2026-06-05",
+        "notiz": "Familien-Ausflug",
+        "verspaetung": false,
+        "ts": "05.06.2026 15:11"
+    },
+    {
+        "id": "de1dc91761",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-06-12",
+        "notiz": "Geburtstag Joshua",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "07.06.2026 21:26 (nachgetragen)"
+    },
+    {
+        "id": "c665f35948",
+        "name": "Julian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-12",
+        "notiz": "Spiel + Geburtstag",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "08.06.2026 14:44"
+    },
+    {
+        "id": "be4a3b0d27",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-06-10",
+        "notiz": "Anton ist diese Woche bei der Schulfahrt",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "08.06.2026 17:44"
+    },
+    {
+        "id": "7f3f01d109",
+        "name": "Torben",
+        "gruppe": "Trainer",
+        "datum": "2026-06-10",
+        "notiz": "Mittwoch: Frankfurt Kunst Exkursion\r\nFreitag: Austauschpartner kommt",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "08.06.2026 21:38"
+    },
+    {
+        "id": "d64af20717",
+        "name": "Torben",
+        "gruppe": "Trainer",
+        "datum": "2026-06-12",
+        "notiz": "Mittwoch: Frankfurt Kunst Exkursion\r\nFreitag: Austauschpartner kommt",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "08.06.2026 21:38"
+    },
+    {
+        "id": "d58026e89d",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-12",
+        "notiz": "Schule Volley Ball Turnier \r\nSpätestens 18 Uhr endet das \r\nVielleicht komme ich pünktlich vielleicht auch erst um 18:30",
+        "verspaetung": true,
+        "frueher_gehen": false,
+        "ts": "09.06.2026 07:37"
+    },
+    {
+        "id": "556abd57d0",
+        "name": "Caius",
+        "gruppe": "G2",
+        "datum": "2026-06-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "09.06.2026 15:22"
+    },
+    {
+        "id": "fa19136d48",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-06-10",
+        "notiz": "Felix ist leider krank",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "10.06.2026 08:46"
+    },
+    {
+        "id": "84bf06255c",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-17",
+        "notiz": "Dorfmeisterschaften ✂️",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "10.06.2026 13:38"
+    },
+    {
+        "id": "b9ff66d61c",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-19",
+        "notiz": "Dorfmeisterschaften ✂️",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "10.06.2026 13:38"
+    },
+    {
+        "id": "46749ac233",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-06-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "10.06.2026 16:28 (nachgetragen)"
+    },
+    {
+        "id": "a6594f0d1e",
+        "name": "Sinan",
+        "gruppe": "G1",
+        "datum": "2026-06-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "10.06.2026 16:35"
+    },
+    {
+        "id": "0555393b2a",
+        "name": "Sinan",
+        "gruppe": "G1",
+        "datum": "2026-06-12",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "10.06.2026 16:35"
+    },
+    {
+        "id": "127ffb7481",
+        "name": "Erik",
+        "gruppe": "G3",
+        "datum": "2026-06-12",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 14:51"
+    },
+    {
+        "id": "b041654b0f",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:57"
+    },
+    {
+        "id": "17b2fa4ac8",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:57"
+    },
+    {
+        "id": "9b6d5fc13a",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-07-15",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:57"
+    },
+    {
+        "id": "d5fcc10bd6",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:57"
+    },
+    {
+        "id": "0470f1d6cd",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:57"
+    },
+    {
+        "id": "838e5eaa6b",
+        "name": "Jonathan",
+        "gruppe": "G1",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:57"
+    },
+    {
+        "id": "fe8db325aa",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:59"
+    },
+    {
+        "id": "96cece7dae",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:59"
+    },
+    {
+        "id": "1b0933b28c",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:59"
+    },
+    {
+        "id": "d6c8eb3b20",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:59"
+    },
+    {
+        "id": "2794989e5f",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:59"
+    },
+    {
+        "id": "bd25a602e0",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 19:59"
+    },
+    {
+        "id": "d8430a43cb",
+        "name": "Julian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-17",
+        "notiz": "Dorfmeisterschaften",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 20:22"
+    },
+    {
+        "id": "3e684bdfa6",
+        "name": "Henry",
+        "gruppe": "G2",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 20:24"
+    },
+    {
+        "id": "3b468fb5b1",
+        "name": "Henry",
+        "gruppe": "G2",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 20:24"
+    },
+    {
+        "id": "8654946019",
+        "name": "Henry",
+        "gruppe": "G2",
+        "datum": "2026-07-15",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 20:24"
+    },
+    {
+        "id": "ab70eb5663",
+        "name": "Henry",
+        "gruppe": "G2",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 20:24"
+    },
+    {
+        "id": "668ab2baae",
+        "name": "Michael",
+        "gruppe": "G3",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 22:16"
+    },
+    {
+        "id": "f716740b72",
+        "name": "Michael",
+        "gruppe": "G3",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 22:16"
+    },
+    {
+        "id": "ee67e1c0fc",
+        "name": "Michael",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 22:16"
+    },
+    {
+        "id": "c14e4fd8fe",
+        "name": "Michael",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 22:16"
+    },
+    {
+        "id": "4e93a1d5a0",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-06-26",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 23:00"
+    },
+    {
+        "id": "ccf3d6fb24",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 23:00"
+    },
+    {
+        "id": "462a661b2f",
+        "name": "Anton",
+        "gruppe": "G4",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 23:00"
+    },
+    {
+        "id": "f7c67251eb",
+        "name": "Hannes",
+        "gruppe": "G1",
+        "datum": "2026-07-08",
+        "notiz": "Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 23:48"
+    },
+    {
+        "id": "5d96314c7c",
+        "name": "Hannes",
+        "gruppe": "G1",
+        "datum": "2026-07-10",
+        "notiz": "Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 23:48"
+    },
+    {
+        "id": "969d410c83",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-17",
+        "notiz": "Dorfmeisterschaften Jockgrim",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 23:55"
+    },
+    {
+        "id": "0ec1f4303c",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-19",
+        "notiz": "Vielleicht Dorfmeisterschaften",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "11.06.2026 23:59"
+    },
+    {
+        "id": "e8e6451c72",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-24",
+        "notiz": "USA Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "f12a313d83",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-26",
+        "notiz": "USA Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "40817ed820",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-01",
+        "notiz": "USA Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "d731e960e3",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-03",
+        "notiz": "USA Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "14cd5cc64f",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-08",
+        "notiz": "USA Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "f03a15a683",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-10",
+        "notiz": "USA Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "c9b6da5f03",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-22",
+        "notiz": "Mallorca Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "23f624ee5e",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-24",
+        "notiz": "Mallorca Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:00"
+    },
+    {
+        "id": "cf85d3ad96",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-29",
+        "notiz": "Bodensee Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:01"
+    },
+    {
+        "id": "9d82e3bacc",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-31",
+        "notiz": "Bodensee Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 00:01"
+    },
+    {
+        "id": "2a029078bd",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 08:19"
+    },
+    {
+        "id": "d34d0af525",
+        "name": "Felix (G4)",
+        "gruppe": "G4",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 08:19"
+    },
+    {
+        "id": "bdf41eda1e",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-07-24",
+        "notiz": "Unbedingt notwendiger Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 08:21"
+    },
+    {
+        "id": "901d660cd9",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-07-29",
+        "notiz": "Unbedingt notwendiger Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 08:21"
+    },
+    {
+        "id": "1ef91806d6",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-07-31",
+        "notiz": "Unbedingt notwendiger Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 08:21"
+    },
+    {
+        "id": "276251039b",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-08-05",
+        "notiz": "Unbedingt notwendiger Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 08:21"
+    },
+    {
+        "id": "82cf19127e",
+        "name": "Andy",
+        "gruppe": "Trainer",
+        "datum": "2026-08-07",
+        "notiz": "Unbedingt notwendiger Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 08:21"
+    },
+    {
+        "id": "8ed0af0d24",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 09:48"
+    },
+    {
+        "id": "f843626c95",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 09:48"
+    },
+    {
+        "id": "822d13aca2",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-07-15",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 09:48"
+    },
+    {
+        "id": "90538c1136",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 09:48"
+    },
+    {
+        "id": "0f258b4dec",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 09:48"
+    },
+    {
+        "id": "1a52a0cfb4",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 09:48"
+    },
+    {
+        "id": "7dc005db7d",
+        "name": "Ben (G3)",
+        "gruppe": "G3",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 12:48"
+    },
+    {
+        "id": "88e9bdef4e",
+        "name": "Ben (G3)",
+        "gruppe": "G3",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 12:48"
+    },
+    {
+        "id": "48f4f3628c",
+        "name": "Ben (G3)",
+        "gruppe": "G3",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 12:48"
+    },
+    {
+        "id": "069555c287",
+        "name": "Ben (G3)",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 12:48"
+    },
+    {
+        "id": "28f978389a",
+        "name": "Ben (G3)",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 12:48"
+    },
+    {
+        "id": "fdd94035f5",
+        "name": "Ben (G3)",
+        "gruppe": "G3",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 12:48"
+    },
+    {
+        "id": "9cda6dfabf",
+        "name": "Ben (G3)",
+        "gruppe": "G3",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 12:48"
+    },
+    {
+        "id": "12d4c5d4d4",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-08",
+        "notiz": "Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 17:38"
+    },
+    {
+        "id": "521da7e30d",
+        "name": "Fabian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-10",
+        "notiz": "Trainingslager Fußball",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 17:38"
+    },
+    {
+        "id": "cfdbf10ee9",
+        "name": "Felix (G1)",
+        "gruppe": "G1",
+        "datum": "2026-06-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 17:41"
+    },
+    {
+        "id": "76816209df",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-06-17",
+        "notiz": "Es könnte sein, dass ich paar Minuten später komme, da ich davor im Praktikum bin",
+        "verspaetung": true,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 19:55"
+    },
+    {
+        "id": "12e3440d33",
+        "name": "Noah",
+        "gruppe": "Trainer",
+        "datum": "2026-06-19",
+        "notiz": "Es könnte sein, dass ich paar Minuten später komme, da ich davor im Praktikum bin",
+        "verspaetung": true,
+        "frueher_gehen": false,
+        "ts": "12.06.2026 19:55"
+    },
+    {
+        "id": "d28f76430c",
+        "name": "Cassian",
+        "gruppe": "Trainer",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "14.06.2026 09:31"
+    },
+    {
+        "id": "9c93ae59f6",
+        "name": "Julian",
+        "gruppe": "Trainer",
+        "datum": "2026-06-19",
+        "notiz": "Eventuell Dorfmeisterschaften",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 08:41"
+    },
+    {
+        "id": "7e025e0d65",
+        "name": "Ben (G1)",
+        "gruppe": "G1",
+        "datum": "2026-06-19",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 10:40"
+    },
+    {
+        "id": "31f581a508",
+        "name": "Hannes",
+        "gruppe": "G1",
+        "datum": "2026-06-26",
+        "notiz": "Familienfeier",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 15:55"
+    },
+    {
+        "id": "a12b003ad3",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-07-22",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 22:45"
+    },
+    {
+        "id": "2b555c0ef8",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-07-24",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 22:45"
+    },
+    {
+        "id": "63798b5182",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-07-29",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 22:45"
+    },
+    {
+        "id": "e93b8e9ea9",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-07-31",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 22:45"
+    },
+    {
+        "id": "5646c47a52",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-08-05",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 22:45"
+    },
+    {
+        "id": "4eabea0c33",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-08-07",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 22:45"
+    },
+    {
+        "id": "80f84e861a",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-08-12",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "15.06.2026 22:45"
+    },
+    {
+        "id": "1ffd3b23ea",
+        "name": "Torben W.",
+        "gruppe": "Trainer",
+        "datum": "2026-06-17",
+        "notiz": "In Berlin",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 05:30"
+    },
+    {
+        "id": "ce77fd904e",
+        "name": "Torben W.",
+        "gruppe": "Trainer",
+        "datum": "2026-06-19",
+        "notiz": "In Berlin",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 05:30"
+    },
+    {
+        "id": "2c175285d9",
+        "name": "Finn T.",
+        "gruppe": "G3",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 07:14"
+    },
+    {
+        "id": "7850f5e5fb",
+        "name": "Finn T.",
+        "gruppe": "G3",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 07:14"
+    },
+    {
+        "id": "d0754ac617",
+        "name": "Finn T.",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 07:14"
+    },
+    {
+        "id": "a4e4ca0a92",
+        "name": "Finn T.",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 07:14"
+    },
+    {
+        "id": "95913ae6fe",
+        "name": "Finn T.",
+        "gruppe": "G3",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 07:14"
+    },
+    {
+        "id": "798e0d6c42",
+        "name": "Finn T.",
+        "gruppe": "G3",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 07:14"
+    },
+    {
+        "id": "7af1d3e06f",
+        "name": "Levent",
+        "gruppe": "G2",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:51"
+    },
+    {
+        "id": "89670fec46",
+        "name": "Levent",
+        "gruppe": "G2",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:51"
+    },
+    {
+        "id": "2b54e93239",
+        "name": "Levent",
+        "gruppe": "G2",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:51"
+    },
+    {
+        "id": "68ba965078",
+        "name": "Levent",
+        "gruppe": "G2",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:51"
+    },
+    {
+        "id": "a4a4d35947",
+        "name": "Ilyas E.",
+        "gruppe": "G1",
+        "datum": "2026-07-22",
+        "notiz": "Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:56"
+    },
+    {
+        "id": "e4bcace014",
+        "name": "Ilyas E.",
+        "gruppe": "G1",
+        "datum": "2026-07-24",
+        "notiz": "Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:56"
+    },
+    {
+        "id": "0352e62649",
+        "name": "Ilyas E.",
+        "gruppe": "G1",
+        "datum": "2026-07-29",
+        "notiz": "Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:56"
+    },
+    {
+        "id": "d6f610dd88",
+        "name": "Ilyas E.",
+        "gruppe": "G1",
+        "datum": "2026-07-31",
+        "notiz": "Urlaub",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 13:56"
+    },
+    {
+        "id": "e6fc7c1f15",
+        "name": "Henry",
+        "gruppe": "G2",
+        "datum": "2026-06-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 (fix)"
+    },
+    {
+        "id": "2711b09672",
+        "name": "Matti",
+        "gruppe": "G2",
+        "datum": "2026-06-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 (fix)"
+    },
+    {
+        "id": "4ef2ff0c40",
+        "name": "Levent",
+        "gruppe": "G2",
+        "datum": "2026-06-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 (fix)"
+    },
+    {
+        "id": "73e6f407ee",
+        "name": "Caius",
+        "gruppe": "G2",
+        "datum": "2026-06-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "16.06.2026 (fix)"
+    },
+    {
+        "id": "58ade89ac1",
+        "name": "Sinan Y.",
+        "gruppe": "G1",
+        "datum": "2026-06-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 16:47"
+    },
+    {
+        "id": "2b2505e763",
+        "name": "Sinan Y.",
+        "gruppe": "G1",
+        "datum": "2026-06-19",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 16:47"
+    },
+    {
+        "id": "c0200904f5",
+        "name": "Michael K.",
+        "gruppe": "G3",
+        "datum": "2026-06-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 21:34"
+    },
+    {
+        "id": "11aef52f6c",
+        "name": "Michael K.",
+        "gruppe": "G3",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 21:34"
+    },
+    {
+        "id": "e18d1317c3",
+        "name": "Michael K.",
+        "gruppe": "G3",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 21:34"
+    },
+    {
+        "id": "53bb56ee2b",
+        "name": "Michael K.",
+        "gruppe": "G3",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 21:34"
+    },
+    {
+        "id": "5cb13fdd3d",
+        "name": "Michael K.",
+        "gruppe": "G3",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 21:34"
+    },
+    {
+        "id": "a83c02b440",
+        "name": "Michael K.",
+        "gruppe": "G3",
+        "datum": "2026-07-15",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 21:34"
+    },
+    {
+        "id": "d132a34582",
+        "name": "Michael K.",
+        "gruppe": "G3",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "17.06.2026 21:34"
+    },
+    {
+        "id": "28a367f1f3",
+        "name": "Finn (G1)",
+        "gruppe": "G1",
+        "datum": "2026-06-26",
+        "notiz": "Finn kommt in die Schule und hat mehrere Veranstaltungen aktuell, dann haben wir drei Wochen Urlaub und Einschulung.",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "18.06.2026 21:12"
+    },
+    {
+        "id": "caa8eb65c1",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-06-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "b810465c48",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "c8f0615069",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "0867c75dfe",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "da64046043",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "bf0ac27178",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-15",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "c4d3ea732d",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "bc626ad10b",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "d40fe3c96c",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "464fbb56fd",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "d55710187d",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "91fe8990f0",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "30885cfc17",
+        "name": "Erik E.",
+        "gruppe": "G3",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "22.06.2026 20:57"
+    },
+    {
+        "id": "77e7c7f19b",
+        "name": "Noah W.",
+        "gruppe": "Trainer",
+        "datum": "2026-06-26",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 08:15 (nachgetragen)"
+    },
+    {
+        "id": "0bc0474581",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-06-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 08:36"
+    },
+    {
+        "id": "b97c17b4db",
+        "name": "Mika W.",
+        "gruppe": "G4",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "24d543e9d1",
+        "name": "Mika W.",
+        "gruppe": "G4",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "214e2cf8c6",
+        "name": "Mika W.",
+        "gruppe": "G4",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "4aa0af364c",
+        "name": "Mika W.",
+        "gruppe": "G4",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "29585de3d4",
+        "name": "Sinan Y.",
+        "gruppe": "G1",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "b1ef74e910",
+        "name": "Sinan Y.",
+        "gruppe": "G1",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "a14e81cc7f",
+        "name": "Sinan Y.",
+        "gruppe": "G1",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "e38e847891",
+        "name": "Sinan Y.",
+        "gruppe": "G1",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:35"
+    },
+    {
+        "id": "cbb5664ce6",
+        "name": "Artem T.",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:54"
+    },
+    {
+        "id": "bb2658c5e4",
+        "name": "Artem T.",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:54"
+    },
+    {
+        "id": "1db700a85d",
+        "name": "Artem T.",
+        "gruppe": "G3",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:54"
+    },
+    {
+        "id": "66ef95146e",
+        "name": "Artem T.",
+        "gruppe": "G3",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 14:54"
+    },
+    {
+        "id": "b2999e5c4e",
+        "name": "Caius C.",
+        "gruppe": "G2",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 17:38 (nachgetragen)"
+    },
+    {
+        "id": "1d3dc1f46a",
+        "name": "Caius C.",
+        "gruppe": "G2",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "23.06.2026 17:39 (nachgetragen)"
+    },
+    {
+        "id": "c971f7a6d1",
+        "name": "Noah W.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "26.06.2026 21:43 (nachgetragen)"
+    },
+    {
+        "id": "d4162856bf",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "d6f079f359",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "ab1f5718b9",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "4569ebf4f8",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "41d7400975",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "7bfd1b7a03",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "4d4487be58",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "167a6c393e",
+        "name": "Finn M.",
+        "gruppe": "G1",
+        "datum": "2026-08-12",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 11:02"
+    },
+    {
+        "id": "0f5884eaaa",
+        "name": "Torben W.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 12:32"
+    },
+    {
+        "id": "e01cd71115",
+        "name": "Torben W.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 12:32"
+    },
+    {
+        "id": "d300588efe",
+        "name": "Torben W.",
+        "gruppe": "Trainer",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 12:32"
+    },
+    {
+        "id": "1d446f17fc",
+        "name": "Torben W.",
+        "gruppe": "Trainer",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "27.06.2026 12:32"
+    },
+    {
+        "id": "b7b918819a",
+        "name": "Caius C.",
+        "gruppe": "G2",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "28.06.2026 11:57"
+    },
+    {
+        "id": "635a806f18",
+        "name": "Caius C.",
+        "gruppe": "G2",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "28.06.2026 11:57"
+    },
+    {
+        "id": "57cad0d414",
+        "name": "Caius C.",
+        "gruppe": "G2",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "28.06.2026 11:57"
+    },
+    {
+        "id": "e519216d97",
+        "name": "Caius C.",
+        "gruppe": "G2",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "28.06.2026 11:57"
+    },
+    {
+        "id": "78d02f5589",
+        "name": "Felix E.",
+        "gruppe": "G1",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 12:44"
+    },
+    {
+        "id": "e7be9c72da",
+        "name": "Felix E.",
+        "gruppe": "G1",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 12:44"
+    },
+    {
+        "id": "e7b8fafacd",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-03",
+        "notiz": "Um 18:15 muss ich gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 12:56"
+    },
+    {
+        "id": "e73b05e349",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-01",
+        "notiz": "18:15 muss ich gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 12:56"
+    },
+    {
+        "id": "c8fe7131c8",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-15",
+        "notiz": "Ich muss um 18 Uhr gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:00"
+    },
+    {
+        "id": "e1362823cb",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-17",
+        "notiz": "Ich muss um 18 Uhr gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:00"
+    },
+    {
+        "id": "7f7d801fdd",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-22",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "35e2a97fd9",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-24",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "437a453872",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-29",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "cc4644b352",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-31",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "a3d691291a",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-08-05",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "e1c704760d",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-08-07",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "fc8c80efc0",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-08-12",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "1fc97baf06",
+        "name": "Fabian G.",
+        "gruppe": "Trainer",
+        "datum": "2026-08-14",
+        "notiz": "Ich muss um 18:15 gehen",
+        "verspaetung": false,
+        "frueher_gehen": true,
+        "ts": "29.06.2026 13:02"
+    },
+    {
+        "id": "9be519711b",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "6446991758",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "78eaa9902c",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "db6aee63c4",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "c0cc9927e9",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "219f3c39df",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "8084f45341",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "42b8ce30a9",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 13:23"
+    },
+    {
+        "id": "2370cd15d8",
+        "name": "Torben W.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": true,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 19:12"
+    },
+    {
+        "id": "706afbd1f2",
+        "name": "Julian K.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 20:35"
+    },
+    {
+        "id": "540c541438",
+        "name": "Julian K.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "29.06.2026 20:35"
+    },
+    {
+        "id": "bc152a64b9",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-01",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "251367e01a",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "4b9fdffd79",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-08",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "e218166ef0",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-10",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "ee0c330dc3",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-15",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "e1d4ad8d79",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "876079aa8a",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "bd725a90ca",
+        "name": "Jonathan S.",
+        "gruppe": "G1",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "30.06.2026 16:34"
+    },
+    {
+        "id": "c890a756a6",
+        "name": "Hannes G.",
+        "gruppe": "G1",
+        "datum": "2026-07-08",
+        "notiz": "Familienfeier",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "01.07.2026 23:16"
+    },
+    {
+        "id": "8c02d0dafa",
+        "name": "Hannes G.",
+        "gruppe": "G1",
+        "datum": "2026-07-10",
+        "notiz": "Familienfeier",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "01.07.2026 23:16"
+    },
+    {
+        "id": "8a4bc34b61",
+        "name": "Hannes G.",
+        "gruppe": "G1",
+        "datum": "2026-07-24",
+        "notiz": "Familienfeier",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "01.07.2026 23:16"
+    },
+    {
+        "id": "aec8fedf62",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-03",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "10c5faf02b",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-17",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "f47cd66963",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-22",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "09da4dbc5b",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-24",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "bd2374d59a",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "4744ede714",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "f8d28ab2fb",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-08-05",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "f2eacf2589",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-08-07",
+        "notiz": "Wir sind spontan über das Wochenende weg",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "d6ad8bdb4e",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-03",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "409f6f13a6",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-17",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "7ea46df1c0",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-22",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "ae45280547",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-24",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "0e80ab64c0",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-29",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "2475b67f1f",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-07-31",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "2152d9d518",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-08-05",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "0a22df6227",
+        "name": "Ben F.",
+        "gruppe": "G3",
+        "datum": "2026-08-07",
+        "notiz": "",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "02.07.2026 14:08"
+    },
+    {
+        "id": "678e190268",
+        "name": "Julian K.",
+        "gruppe": "Trainer",
+        "datum": "2026-07-31",
+        "notiz": "Konzert",
+        "verspaetung": false,
+        "frueher_gehen": false,
+        "ts": "03.07.2026 12:19"
+    }
+]
