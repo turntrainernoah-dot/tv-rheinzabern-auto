@@ -9,6 +9,9 @@ on:
 jobs:
   generate-plan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      models: read
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -55,4 +58,5 @@ jobs:
           GMAIL_USER:         ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO:           ${{ secrets.EMAIL_TO }}
+          GH_MODELS_TOKEN:    ${{ secrets.GH_MODELS_TOKEN }}
         run: python auto_trainingsplan.py
