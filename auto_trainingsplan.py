@@ -1354,6 +1354,14 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
             assign[tr] = lab; pool.remove(tr)
         else:
             open_units.append(lab)
+    # Zu wenige Trainer fuer die offenen Gruppen -> benachbart zusammenlegen (volle Abdeckung)
+    def _gnum(x):
+        return int(x[1]) if len(x) > 1 and x[1].isdigit() else 9
+    while len(open_units) > max(len(pool), 1) and len([u for u in open_units if "+" not in u]) >= 2:
+        _s = sorted([u for u in open_units if "+" not in u], key=_gnum)
+        _a, _b = _s[0], _s[1]
+        open_units.remove(_a); open_units.remove(_b)
+        open_units.append("+".join(sorted([_a, _b], key=_gnum)))
     g4u = next((u for u in open_units if "G4" in u), None)
     andy = next((t for t in pool if t.startswith("Andy")), None)
     if andy and g4u:
