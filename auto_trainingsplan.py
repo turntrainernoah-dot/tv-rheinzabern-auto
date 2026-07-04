@@ -1189,7 +1189,7 @@ Kontext:
 - Diese Anmerkung stammt vom Trainer: "<WRITER>". "ich"/"mich"/"mir"/"meine" bezieht sich immer auf diesen Trainer.
 
 Gib GENAU dieses JSON zurueck (keine weiteren Felder, kein Text drumherum):
-{"ziel": {"typ": "naechstes | datum | naechstes_geraet", "datum": "TT.MM.JJJJ oder null", "geraet": "Geraetename oder null"}, "notiz": "reiner Hinweistext oder null", "geraete": {"g1": "Geraet", "g2": "Geraet"} , "gruppe_entfall": ["G3"], "timing": [{"trainer": "Name", "richtung": "spaet | frueh", "uhrzeit": "HH:MM oder null"}], "merges": [["G3","G4"]], "zuteilung": [{"trainer": "Name", "gruppe": "z.B. G1, G2+G3 oder Springer"}], "unsicher": true}
+{"ziel": {"typ": "naechstes | datum | naechstes_geraet", "datum": "TT.MM.JJJJ oder null", "geraet": "Geraetename oder null"}, "notiz": "reiner Hinweistext oder null", "geraete": {"g1": "Geraet", "g2": "Geraet"} , "gruppe_entfall": ["G3"], "timing": [{"trainer": "Name", "richtung": "spaet | frueh", "uhrzeit": "HH:MM oder null"}], "merges": [["G3","G4"]], "zuteilung": [{"trainer": "Name", "gruppe": "z.B. G1, G2+G3 oder Springer"}], "reset": false, "unsicher": true}
 
 Regeln:
 - ziel.typ: KEIN Datum/Zeitpunkt genannt -> "naechstes" (gilt NUR fuer genau das naechste Training, NIE Dauerauftrag). Konkretes Datum (z.B. "am 14.10") -> "datum" mit datum. "naechstes Mal <Geraet>" / "wenn wir <Geraet> turnen" -> "naechstes_geraet" mit geraet. Wenn ziel unklar -> typ "naechstes".
@@ -1200,6 +1200,8 @@ Regeln:
 - Reiner Hinweis ("schreibe/bitte ...") -> nur notiz.
 - Nur Namen aus der Trainerliste, nur Gruppen aus der Gruppenliste, nur Geraete aus der Geraeteliste.
 - Keine Aktion in einem Feld: leere Liste [] bzw. null. Bei Unklarheit unsicher=true und notiz=Originaltext.
+- Ist ein Trainer NICHT namentlich genannt (z.B. "der andere Trainer", "jemand", "ein Trainer macht G2+G3") -> als merges eintragen (ohne Trainer), NICHT als zuteilung.
+- "loesche/entferne alle (bisherigen) Anmerkungen", "setze zurueck", "reset", "mach alles rueckgaengig" -> reset: true (alle bisherigen Vorgaben fuer das Ziel-Datum werden entfernt).
 - Antworte ausschliesslich mit dem JSON-Objekt."""
 
 def _ki_system_prompt(writer, next_date_str):
@@ -1354,7 +1356,29 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
     for t in ordered:
         assign.setdefault(t, "Springer")
 
-    TRAINER_PLAN = {t: (_ki_label_cells(assign[t]) if t in assign else None) for t in ALLE_TRAINER}
+    # Zellen mit korrekter Geraete-Rotation (Phasen-Farben wie Standard-Builder)
+    def _farbe(g, phase):
+        if g1_starts_geraet2:
+            m = ({"G1":"g2_orange","G2":"g1_blau","G3":"g1_blau"} if phase==1
+                 else {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"})
+        else:
+            m = ({"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"} if phase==1
+                 else {"G1":"g2_orange","G2":"g2_lila","G3":"g1_blau"})
+        return m.get(g, "aufbauen")
+    _PAL = ["g1_blau", "g2_orange", "g1_gruen", "g2_lila"]
+    def _cells(label, pidx):
+        lab = str(label).strip()
+        if lab.lower() == "springer":
+            return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
+        if lab == "G4":
+            return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4","g1_gruen"),("G4","g2_orange")]
+        if "+" not in lab and lab in ("G1","G2","G3"):
+            return [("AW "+lab,"aufwaermen"),(lab,_farbe(lab,1)),(lab,_farbe(lab,1)),(lab,_farbe(lab,2)),("Abbauen","aufbauen")]
+        col = _PAL[pidx % len(_PAL)]
+        return [("AW "+lab,"aufwaermen"),(lab,col),(lab,col),(lab,col),("Abbauen","aufbauen")]
+    _labs = sorted(set(assign.values()))
+    _pidx = {l: i for i, l in enumerate(_labs)}
+    TRAINER_PLAN = {t: (_cells(assign[t], _pidx.get(assign[t], 0)) if t in assign else None) for t in ALLE_TRAINER}
     anm = []
     if open_units:
         anm.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(open_units))
@@ -1382,6 +1406,15 @@ def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
             continue
         try:
             dk = ki_resolve_target(res.get("ziel"), state)
+            if res.get("reset"):
+                fixed_entries.pop(dk, None)
+                if a.get("id"):
+                    processed_ids.append(a["id"])
+                if a in anmerkungen_server:
+                    anmerkungen_server.remove(a)
+                changed = True
+                print(f"[KI] RESET {dk} (alle Vorgaben entfernt)")
+                continue
             fe = fixed_entries.setdefault(dk, {})
             fe["manuell_bearbeitet"] = True
             fe["quelle"] = "ki"
