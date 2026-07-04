@@ -835,8 +835,9 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
         return [("AW "+g,"aufwaermen"),(g,farbe(g,1)),(g,farbe(g,1)),(g,farbe(g,2)),("Abbauen","aufbauen")]
     def tpl_g4():
         return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",G4_SLOT3),("G4",G4_SLOT4)]
-    def tpl_merged(label, col):
-        return [("AW "+label,"aufwaermen"),(label,col),(label,col),(label,col),("Abbauen","aufbauen")]
+    def tpl_merged(label, idx):
+        c1, c2 = ("g1_blau", "g2_orange") if (idx % 2 == 0) else ("g2_orange", "g1_blau")
+        return [("AW "+label,"aufwaermen"),(label,c1),(label,c1),(label,c2),("Abbauen","aufbauen")]
     def tpl_springer():
         return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
 
@@ -852,7 +853,7 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
         elif len(u) == 1:
             TRAINER_PLAN[t] = tpl_single(u[0])
         else:
-            TRAINER_PLAN[t] = tpl_merged(label_of(u), PALETTE[assigned[t] % len(PALETTE)])
+            TRAINER_PLAN[t] = tpl_merged(label_of(u), assigned[t])
 
     return TRAINER_PLAN, {}, anmerkungen
 
@@ -1383,8 +1384,8 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
             return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4","g1_gruen"),("G4","g2_orange")]
         if "+" not in lab and lab in ("G1","G2","G3"):
             return [("AW "+lab,"aufwaermen"),(lab,_farbe(lab,1)),(lab,_farbe(lab,1)),(lab,_farbe(lab,2)),("Abbauen","aufbauen")]
-        col = _PAL[pidx % len(_PAL)]
-        return [("AW "+lab,"aufwaermen"),(lab,col),(lab,col),(lab,col),("Abbauen","aufbauen")]
+        c1, c2 = ("g1_blau", "g2_orange") if (pidx % 2 == 0) else ("g2_orange", "g1_blau")
+        return [("AW "+lab,"aufwaermen"),(lab,c1),(lab,c1),(lab,c2),("Abbauen","aufbauen")]
     _labs = sorted(set(assign.values()))
     _pidx = {l: i for i, l in enumerate(_labs)}
     TRAINER_PLAN = {t: (_cells(assign[t], _pidx.get(assign[t], 0)) if t in assign else None) for t in ALLE_TRAINER}
@@ -1652,7 +1653,7 @@ def main():
         _g2 = fixed_for_date.get("geraet_2") or _rg2
         _g1s = fixed_for_date.get("g1_starts_geraet2", _rg1s)
         _ki = fixed_for_date.get("ki") or {}
-        if fixed_for_date.get("quelle") == "ki" and (_ki.get("assign") or _ki.get("merges")):
+        if (_ki.get("assign") or _ki.get("merges")) and not fixed_for_date.get("fixed_trainer_partial"):
             try:
                 _base_tp, _sd, _ka = build_ki_einteilung(absences, _ki, _g1, _g2, _g1s)
             except Exception as _kierr:
