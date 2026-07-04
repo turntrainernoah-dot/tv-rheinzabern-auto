@@ -1188,8 +1188,10 @@ Kontext:
 - Heute/naechstes Training: <NEXT>
 - Diese Anmerkung stammt vom Trainer: "<WRITER>". "ich"/"mich"/"mir"/"meine" bezieht sich immer auf diesen Trainer.
 
+Aktuelle Anmerkungen je Datum — NUR Referenz fuer Text-Aenderungen, leite daraus NIEMALS Aktionen (gruppe_entfall/timing/zuteilung/geraete/merges) ab: <CURRENT>
+
 Gib GENAU dieses JSON zurueck (keine weiteren Felder, kein Text drumherum):
-{"ziel": {"typ": "naechstes | datum | naechstes_geraet", "datum": "TT.MM.JJJJ oder null", "geraet": "Geraetename oder null"}, "notiz": "reiner Hinweistext oder null", "geraete": {"g1": "Geraet", "g2": "Geraet"} , "gruppe_entfall": ["G3"], "timing": [{"trainer": "Name", "richtung": "spaet | frueh", "uhrzeit": "HH:MM oder null"}], "merges": [["G3","G4"]], "zuteilung": [{"trainer": "Name", "gruppe": "z.B. G1, G2+G3 oder Springer"}], "reset": false, "unsicher": true}
+{"ziel": {"typ": "naechstes | datum | naechstes_geraet", "datum": "TT.MM.JJJJ oder null", "geraet": "Geraetename oder null"}, "notiz": "reiner Hinweistext oder null", "geraete": {"g1": "Geraet", "g2": "Geraet"} , "gruppe_entfall": ["G3"], "timing": [{"trainer": "Name", "richtung": "spaet | frueh", "uhrzeit": "HH:MM oder null"}], "merges": [["G3","G4"]], "zuteilung": [{"trainer": "Name", "gruppe": "z.B. G1, G2+G3 oder Springer"}], "notiz_neu": null, "reset": false, "unsicher": true}
 
 Regeln:
 - ziel.typ: KEIN Datum/Zeitpunkt genannt -> "naechstes" (gilt NUR fuer genau das naechste Training, NIE Dauerauftrag). Konkretes Datum (z.B. "am 14.10") -> "datum" mit datum. "naechstes Mal <Geraet>" / "wenn wir <Geraet> turnen" -> "naechstes_geraet" mit geraet. Wenn ziel unklar -> typ "naechstes".
@@ -1202,17 +1204,22 @@ Regeln:
 - Keine Aktion in einem Feld: leere Liste [] bzw. null. Bei Unklarheit unsicher=true und notiz=Originaltext.
 - Ist ein Trainer NICHT namentlich genannt (z.B. "der andere Trainer", "jemand", "ein Trainer macht G2+G3") -> als merges eintragen (ohne Trainer), NICHT als zuteilung.
 - "loesche/entferne alle (bisherigen) Anmerkungen", "setze zurueck", "reset", "mach alles rueckgaengig" -> reset: true (alle bisherigen Vorgaben fuer das Ziel-Datum werden entfernt).
+- notiz_neu: Setze es bei JEDER Aenderung des Anmerkungs-TEXTES — hinzufuegen ("fuege hinzu ..."), loeschen ("loesche die Zeile ..."), umformulieren oder ersetzen ("aendere X zu Y"). Gib dann IMMER den KOMPLETTEN neuen Anmerkungstext des Ziel-Datums zurueck: bestehende Zeilen aus der Referenz uebernehmen und die Aenderung anwenden. Bei reinen Struktur-/Plan-Aktionen ohne Text-Aenderung notiz_neu = null.
+- WICHTIG: gruppe_entfall/timing/zuteilung/merges/geraete/reset NUR aus der AKTUELLEN Trainer-Anmerkung ableiten, NIEMALS aus der Referenz der aktuellen Anmerkungen.
 - Antworte ausschliesslich mit dem JSON-Objekt."""
 
-def _ki_system_prompt(writer, next_date_str):
+def _ki_system_prompt(writer, next_date_str, current_notes=None):
     gr = ", ".join(ALLE_TURNER.keys())
     tr = ", ".join(ALLE_TRAINER)
     ge = ", ".join(sorted({g for c in GERAETE_ROTATION for g in c}))
+    cur = "(keine)"
+    if current_notes:
+        cur = " | ".join(f"{d}: {(t or '').replace(chr(10), ' / ')}" for d, t in current_notes.items()) or "(keine)"
     return (_KI_PROMPT.replace("<GR>", gr).replace("<TR>", tr).replace("<GE>", ge)
-            .replace("<NEXT>", next_date_str).replace("<WRITER>", writer or "?"))
+            .replace("<NEXT>", next_date_str).replace("<WRITER>", writer or "?").replace("<CURRENT>", cur))
 
-def ki_analyze(notiz, writer, next_date_str, token):
-    content = _ki_call([{"role": "system", "content": _ki_system_prompt(writer, next_date_str)},
+def ki_analyze(notiz, writer, next_date_str, token, current_notes=None):
+    content = _ki_call([{"role": "system", "content": _ki_system_prompt(writer, next_date_str, current_notes)},
                         {"role": "user", "content": notiz}], token)
     return json.loads(content)
 
@@ -1394,13 +1401,15 @@ def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
     allowed_ger = {g for c in GERAETE_ROTATION for g in c}
     processed_ids = []
     changed = False
+    current_notes = {d: (fe.get("notiz") or "") for d, fe in fixed_entries.items()
+                     if isinstance(fe, dict) and (fe.get("notiz") or "").strip()}
     for a in list(anmerkungen_server):
         notiz = (a.get("notiz") or "").strip()
         writer = a.get("trainer", "")
         if not notiz:
             continue
         try:
-            res = ki_analyze(notiz, writer, next_date_str, token)
+            res = ki_analyze(notiz, writer, next_date_str, token, current_notes)
         except Exception as e:
             print(f"[KI] Analyse fehlgeschlagen ({writer}): {e}")
             continue
@@ -1419,6 +1428,16 @@ def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
             fe["manuell_bearbeitet"] = True
             fe["quelle"] = "ki"
             ki = fe.setdefault("ki", {})
+            _nn = res.get("notiz_neu")
+            if _nn is not None:
+                fe["notiz"] = str(_nn).strip()   # reine Anmerkungs-Textbearbeitung (Struktur bleibt)
+                if a.get("id"):
+                    processed_ids.append(a["id"])
+                if a in anmerkungen_server:
+                    anmerkungen_server.remove(a)
+                changed = True
+                print(f"[KI] Anmerkungs-Text bearbeitet -> {dk}")
+                continue
             note_lines = []
             ge = res.get("geraete")
             if ge and ge.get("g1") in allowed_ger and ge.get("g2") in allowed_ger:
