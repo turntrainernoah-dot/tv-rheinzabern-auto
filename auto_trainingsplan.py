@@ -1164,7 +1164,7 @@ def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, pa
 #  MINI-KI: freie Trainer-Anmerkungen -> Planaenderungen (GitHub Models)
 # ════════════════════════════════════════════════════════════════
 GH_MODELS_ENDPOINT = os.environ.get("GH_MODELS_ENDPOINT", "https://models.github.ai/inference/chat/completions")
-GH_MODELS_MODEL    = os.environ.get("GH_MODELS_MODEL", "openai/gpt-4o-mini")
+GH_MODELS_MODEL    = os.environ.get("GH_MODELS_MODEL", "openai/gpt-4o")
 
 def _ki_token():
     return os.environ.get("GH_MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
@@ -1191,7 +1191,7 @@ Kontext:
 Aktuelle Anmerkungen je Datum — NUR Referenz fuer Text-Aenderungen, leite daraus NIEMALS Aktionen (gruppe_entfall/timing/zuteilung/geraete/merges) ab: <CURRENT>
 
 Gib GENAU dieses JSON zurueck (keine weiteren Felder, kein Text drumherum):
-{"ziel": {"typ": "naechstes | datum | naechstes_geraet", "datum": "TT.MM.JJJJ oder null", "geraet": "Geraetename oder null"}, "notiz": "reiner Hinweistext oder null", "geraete": {"g1": "Geraet", "g2": "Geraet"} , "gruppe_entfall": ["G3"], "timing": [{"trainer": "Name", "richtung": "spaet | frueh", "uhrzeit": "HH:MM oder null"}], "merges": [["G3","G4"]], "zuteilung": [{"trainer": "Name", "gruppe": "z.B. G1, G2+G3 oder Springer"}], "notiz_neu": null, "reset": false, "unsicher": true}
+{"ziel": {"typ": "naechstes | datum | naechstes_geraet", "datum": "TT.MM.JJJJ oder null", "geraet": "Geraetename oder null"}, "notiz": "reiner Hinweistext oder null", "geraete": {"g1": "Geraet", "g2": "Geraet"} , "gruppe_entfall": ["G3"], "abwesend_kinder": [], "wieder_da_kinder": [], "abwesend_trainer": [], "einteilung": {}, "timing": [{"trainer": "Name", "richtung": "spaet | frueh", "uhrzeit": "HH:MM oder null"}], "merges": [["G3","G4"]], "zuteilung": [{"trainer": "Name", "gruppe": "z.B. G1, G2+G3 oder Springer"}], "notiz_neu": null, "reset": false, "unsicher": true}
 
 Regeln:
 - ziel.typ: KEIN Datum/Zeitpunkt genannt -> "naechstes" (gilt NUR fuer genau das naechste Training, NIE Dauerauftrag). Konkretes Datum (z.B. "am 14.10") -> "datum" mit datum. "naechstes Mal <Geraet>" / "wenn wir <Geraet> turnen" -> "naechstes_geraet" mit geraet. Wenn ziel unklar -> typ "naechstes".
@@ -1206,10 +1206,12 @@ Regeln:
 - "loesche/entferne alle (bisherigen) Anmerkungen", "setze zurueck", "reset", "mach alles rueckgaengig" -> reset: true (alle bisherigen Vorgaben fuer das Ziel-Datum werden entfernt).
 - notiz_neu: Setze es bei JEDER Aenderung des Anmerkungs-TEXTES — hinzufuegen ("fuege hinzu ..."), loeschen ("loesche die Zeile ..."), umformulieren oder ersetzen ("aendere X zu Y"). Gib dann IMMER den KOMPLETTEN neuen Anmerkungstext des Ziel-Datums zurueck: bestehende Zeilen aus der Referenz uebernehmen und die Aenderung anwenden. Bei reinen Struktur-/Plan-Aktionen ohne Text-Aenderung notiz_neu = null.
 - WICHTIG: gruppe_entfall/timing/zuteilung/merges/geraete/reset NUR aus der AKTUELLEN Trainer-Anmerkung ableiten, NIEMALS aus der Referenz der aktuellen Anmerkungen.
+- abwesend_kinder / wieder_da_kinder: einzelne Kinder ab-/wieder anmelden (nur Namen aus der Kinderliste). abwesend_trainer: Trainer die fehlen.
+- einteilung: KOMPLETTE Zuordnung {Trainer: Label}, wenn die Anweisung Trainer den Gruppen zuordnet (z.B. "Andy G1, Noah G2, Cassian G4, Rest Springer"). Label = G1..G4, "GX+GY", "Springer" oder eigener Kurztext. Sonst {} = automatische Einteilung.
 - Antworte ausschliesslich mit dem JSON-Objekt."""
 
 def _ki_system_prompt(writer, next_date_str, current_notes=None):
-    gr = ", ".join(ALLE_TURNER.keys())
+    gr = "; ".join(f"{g}: {', '.join(ALLE_TURNER[g])}" for g in ALLE_TURNER)
     tr = ", ".join(ALLE_TRAINER)
     ge = ", ".join(sorted({g for c in GERAETE_ROTATION for g in c}))
     cur = "(keine)"
@@ -1391,6 +1393,13 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
         anm.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(open_units))
     return TRAINER_PLAN, {}, anm
 
+def _ki_kid(name):
+    disp = normalize_name((name or "").strip())
+    for g, lst in ALLE_TURNER.items():
+        if disp in lst:
+            return g, disp
+    return None
+
 def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
     """Analysiert jede ungelesene Anmerkung per KI und schreibt die Aenderung in
     fixed_entries[Zieldatum] (Admin-Mechanismus). Einmalig pro Datum."""
@@ -1468,6 +1477,37 @@ def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
                 for mg in res["merges"]:
                     if isinstance(mg, list) and len(mg) >= 2:
                         note_lines.append("+".join(mg) + " zusammen")
+            for kn in (res.get("abwesend_kinder") or []):
+                hit = _ki_kid(kn)
+                if hit:
+                    g, disp = hit
+                    fa.setdefault(g, [])
+                    if disp not in fa[g]:
+                        fa[g].append(disp)
+                    note_lines.append(f"{disp} abgemeldet")
+            for kn in (res.get("wieder_da_kinder") or []):
+                hit = _ki_kid(kn)
+                if hit:
+                    g, disp = hit
+                    if disp in fa.get(g, []):
+                        fa[g].remove(disp)
+                    note_lines.append(f"{disp} wieder da")
+            for tn in (res.get("abwesend_trainer") or []):
+                d = normalize_name((tn or "").strip())
+                if d in ALLE_TRAINER:
+                    fa.setdefault("Trainer", [])
+                    if d not in fa["Trainer"]:
+                        fa["Trainer"].append(d)
+                    note_lines.append(f"{d} nicht da")
+            eint = res.get("einteilung") or {}
+            if isinstance(eint, dict) and eint:
+                val = []
+                for tr, lab in eint.items():
+                    d = normalize_name((tr or "").strip())
+                    if d in ALLE_TRAINER and lab:
+                        val.append({"trainer": d, "gruppe": str(lab)})
+                if val:
+                    ki["assign"] = val
             base_note = (res.get("notiz") or "").strip()
             allnotes = [x for x in (([base_note] if base_note else []) + note_lines) if x]
             if allnotes:
