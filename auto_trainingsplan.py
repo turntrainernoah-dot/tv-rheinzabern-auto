@@ -1640,9 +1640,17 @@ def main():
     if fixed_for_date.get("manuell_bearbeitet"):
         import hashlib as _hl
         admin_fixed_hash = _hl.md5(json.dumps(fixed_for_date, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
-        _g1 = fixed_for_date.get("geraet_1") or "Boden"
-        _g2 = fixed_for_date.get("geraet_2") or "Barren"
-        _g1s = fixed_for_date.get("g1_starts_geraet2", state.get("g1_starts_geraet2", False))
+        # Geraete/Rotation KONSISTENT zur eigentlichen Generierung bestimmen:
+        # explizit gesetzte Geraete nutzen, sonst die KORREKTE Rotation fuer diesen Tag
+        # (NICHT stumpf Boden/Barren) -> KI-/Admin-Plaene haben immer die richtigen Geraete.
+        try:
+            _ridx, _rg1s = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
+            _rg1, _rg2 = GERAETE_ROTATION[_ridx]
+        except Exception:
+            _rg1, _rg2, _rg1s = "Boden", "Barren", state.get("g1_starts_geraet2", False)
+        _g1 = fixed_for_date.get("geraet_1") or _rg1
+        _g2 = fixed_for_date.get("geraet_2") or _rg2
+        _g1s = fixed_for_date.get("g1_starts_geraet2", _rg1s)
         _ki = fixed_for_date.get("ki") or {}
         if fixed_for_date.get("quelle") == "ki" and (_ki.get("assign") or _ki.get("merges")):
             try:
