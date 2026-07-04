@@ -1,0 +1,23 @@
+[
+    {
+        "id": "8bdf208b9b",
+        "trainer": "Noah",
+        "notiz": "Test",
+        "ts": "06.06.2026 21:18",
+        "gelesen": true
+    },
+    {
+        "id": "52f164fde1",
+        "trainer": "Noah",
+        "notiz": "Im nächsten Training soll Andy Springer sein und Cassian soll für Video aufnehmen eingeteilt sein. Cassian soll wir ein Springer eingeteilt sein nur dass bei der Trainereinteilung statt Springer „Videos aufnehmen“ steht",
+        "ts": "08.06.2026 20:22",
+        "gelesen": true
+    },
+    {
+        "id": "f031e61ad3",
+        "trainer": "Noah W.",
+        "notiz": "G4 soll komplett ausfallen. Andy macht G1 und der andere Trainer G2+G3",
+        "ts": "04.07.2026 11:51",
+        "gelesen": false
+    }
+]
