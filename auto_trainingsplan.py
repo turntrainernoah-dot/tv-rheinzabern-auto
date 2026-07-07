@@ -1852,8 +1852,10 @@ def main():
             plan_data["anm_notified_ids"] = list(already_sent_anm_ids | set(new_anm_ids))
         save_state(sftp, state)
 
-        # Weitere kurze Hinweise sammeln (Anmerkungen/Verspaetungen/Warnungen) -
-        # zusaetzlich zu einem evtl. schon vorhandenen Trainerwechsel-Hinweis
+        # Weitere kurze Hinweise sammeln - NUR was wirklich eine Aktion/Aenderung war
+        # (Trainerwechsel, Engpass-Zusammenlegung, Trainer-Anmerkung, Verspaetung).
+        # Reine Turner-bezogene Warnungen (z.B. "nur 2 Turner in Gruppe X") ohne
+        # Handlungsbedarf loesen bewusst KEINE Mail aus - nur Log (Noah, 07.07.2026).
         if new_anm_ids:
             hinweise.append("es gibt neue Trainer-Anmerkungen")
         if new_late_notes:
@@ -1863,7 +1865,7 @@ def main():
             hinweise.append("nur wenige Trainer da, Gruppen wurden zusammengelegt")
         other_new_warnings = [t for k, t in new_soft_warnings if not k.startswith("low_trainer_")]
         if other_new_warnings:
-            hinweise.append("es gibt einen weiteren Hinweis")
+            print(f"[INFO] Reine Turner-Hinweise fuer {datum} (keine Mail, kein Handlungsbedarf): {other_new_warnings}")
 
         # EINE konsolidierte, kurze Mail - nur wenn es etwas zu berichten gibt.
         # Reine Turner-Abwesenheitsaenderungen ohne weitere Auffaelligkeit -> keine Mail.
@@ -2011,7 +2013,8 @@ def main():
         }
         save_state(sftp, state)
 
-        # Kurze Hinweise sammeln - fliessen in die EINE Erstellungs-Mail mit ein
+        # Kurze Hinweise sammeln - fliessen in die EINE Erstellungs-Mail mit ein.
+        # Reine Turner-bezogene Warnungen ohne Handlungsbedarf -> nur Log, keine Erwaehnung.
         if anmerkungen_server:
             hinweise.append("es gibt neue Trainer-Anmerkungen")
         if late_notes:
@@ -2021,7 +2024,7 @@ def main():
             hinweise.append("nur wenige Trainer da, Gruppen wurden zusammengelegt")
         other_warnings = [t for k, t in soft_warnings if not k.startswith("low_trainer_")]
         if other_warnings:
-            hinweise.append("es gibt einen weiteren Hinweis")
+            print(f"[INFO] Reine Turner-Hinweise fuer {datum} (keine Erwaehnung, kein Handlungsbedarf): {other_warnings}")
 
         # Haupt-Notification: Plan fertig (immer genau EINE Mail, kurz, mit Hinweisen falls vorhanden)
         text = f"Hallo, der Trainingsplan für {wtag}, {datum} ist erstellt."
