@@ -1745,26 +1745,18 @@ def main():
         if trainer_changed:
             added   = new_trainer_abs - stored_trainer_abs
             removed = stored_trainer_abs - new_trainer_abs
-            body = (
-                f"Hallo Noah,\n\n"
-                f"die Trainer-Abwesenheiten fuer {wtag}, {datum} haben sich geaendert.\n"
-                f"Der Plan kann NICHT automatisch aktualisiert werden – die Trainer-Einteilung\n"
-                f"wuerde sich aendern und das muss manuell geprueft werden.\n\n"
-                f"Bisher abwesend: {', '.join(sorted(stored_trainer_abs)) or 'Alle da'}\n"
-                f"Jetzt abwesend: {', '.join(sorted(new_trainer_abs)) or 'Alle da'}\n"
-                f"Neu abwesend: {', '.join(sorted(added)) or '–'}\n"
-                f"Nicht mehr abwesend: {', '.join(sorted(removed)) or '–'}\n\n"
-                f"Bitte erstelle den Plan manuell in Claude.\n\nGrueße, Auto-Bot"
-            )
-            send_whatsapp(
-                f"Hi Noah, hier ist Cloude ✋\n\n"
-                f"Beim Trainingsplan für {wtag}, {datum} hat sich bei den Trainern etwas geändert "
-                f"und ich kann den Plan nicht automatisch anpassen.\n\n"
-                f"Neu abwesend: {', '.join(sorted(added)) or '–'}\n"
-                f"Nicht mehr abwesend: {', '.join(sorted(removed)) or '–'}\n\n"
-                f"Bitte erstell den Plan kurz manuell in Claude. 🙏"
-            )
-            print("Trainer-Aenderung! WhatsApp gesendet.")
+            wer = ', '.join(sorted(added | removed)) or '–'
+            if not plan_data.get("trainer_change_notified"):
+                send_whatsapp(
+                    f"Hallo, die Trainereinteilung für den {datum} muss geändert werden, "
+                    f"da {wer} abgemeldet ist."
+                )
+                plan_data["trainer_change_notified"] = True
+                state.setdefault("plan_data", {})[datum_kurz] = plan_data
+                save_state(sftp, state)
+                print("Trainer-Aenderung! Kurz-Mail gesendet.")
+            else:
+                print("Trainer-Aenderung bereits gemeldet - keine erneute Mail.")
             sftp.close(); ssh.close()
             return
 
@@ -1871,37 +1863,23 @@ def main():
             plan_data["warnings_sent"] = list(already_sent_warnings | {k for k, _ in new_soft_warnings})
         save_state(sftp, state)
 
-        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen (einmalig; Anmerkungen werden als gelesen markiert)
+        # Notification: Trainer-Anmerkungen - laut Noah keine eigene Mail mehr (07.07.2026), nur Log
         if anmerkungen_server:
-            anm_lines = "\n".join(
-                f"  • {a.get('trainer','')}: {a.get('notiz','').strip()}"
-                for a in anmerkungen_server if a.get("notiz","").strip()
-            )
-            send_whatsapp(
-                f"Hi Noah, Cloude hier 📋\n\n"
-                f"Neue Trainer-Anmerkung für {wtag}, {datum} wurde eingebaut:\n\n"
-                f"{anm_lines}\n\n"
-                f"Bitte kurz prüfen ob alles stimmt ✅"
-            )
+            print(f"[INFO] {len(anmerkungen_server)} Trainer-Anmerkung(en) eingebaut fuer {datum} (keine Mail).")
 
-        # Notification: Verspätungen / frühes Gehen → nur NEUE Hinweise
+        # Notification: Verspaetungen/Fruehgeh - laut Noah keine eigene Mail mehr (07.07.2026), nur Log
         if new_late_notes:
-            send_whatsapp(
-                f"Hi Noah, Cloude hier ⏰\n\n"
-                f"Neue Verspätungs-/Frühgeh-Hinweise für {wtag}, {datum}:\n\n"
-                + "\n".join(f"{n}" for n in new_late_notes) +
-                f"\n\nSind im Plan eingetragen."
-            )
+            print(f"[INFO] Neue Verspaetungs-/Fruehgeh-Hinweise fuer {datum} (keine Mail): {new_late_notes}")
 
-        # Notification: ≤2 Turner in Gruppe → nur neue Warnungen (einmalig pro Plan)
-        if new_soft_warnings:
-            warn_text = "\n".join(f"• {t}" for _, t in new_soft_warnings)
+        # Notification: Trainer-Engpass -> Gruppen zusammengelegt (einmalig, kurze Mail)
+        low_trainer_new = [(k, t) for k, t in new_soft_warnings if k.startswith("low_trainer_")]
+        if low_trainer_new:
             send_whatsapp(
-                f"Hi Noah, Cloude hier ⚠️\n\n"
-                f"Hinweis für {wtag}, {datum}:\n\n"
-                f"{warn_text}\n\n"
-                f"Plan wurde trotzdem aktualisiert – nur zur Info."
+                f"Hallo, da am {wtag}, {datum} nur wenige Trainer da sind, werden die Gruppen zusammengelegt."
             )
+        other_new_warnings = [t for k, t in new_soft_warnings if not k.startswith("low_trainer_")]
+        if other_new_warnings:
+            print(f"[INFO] Weitere Hinweise fuer {datum} (keine Mail): {other_new_warnings}")
 
         # KEIN Update-Summary mehr (keine Routine-Benachrichtigung bei normalen Abwesenheits-Updates)
         print(f"UPDATE FERTIG fuer {datum}.")
@@ -2055,58 +2033,26 @@ def main():
         }
         save_state(sftp, state)
 
-        # Notification: Trainer-Anmerkungen vorhanden → bitte prüfen (einmalig)
+        # Notification: Trainer-Anmerkungen - laut Noah keine eigene Mail mehr (07.07.2026), nur Log
         if anmerkungen_server:
-            anm_lines = "\n".join(
-                f"• {a.get('trainer','')}: {a.get('notiz','').strip()}"
-                for a in anmerkungen_server if a.get("notiz","").strip()
-            )
-            send_whatsapp(
-                f"Hi Noah, Cloude hier 📋\n\n"
-                f"Neue Trainer-Anmerkung für {wtag}, {datum} wurde eingebaut:\n\n"
-                f"{anm_lines}\n\n"
-                f"Bitte kurz prüfen ob alles stimmt ✅"
-            )
+            print(f"[INFO] {len(anmerkungen_server)} Trainer-Anmerkung(en) eingebaut fuer {datum} (keine Mail).")
 
-        # Notification: Verspätungen / frühes Gehen (einmalig beim Erstellen)
+        # Notification: Verspaetungen/Fruehgeh - laut Noah keine eigene Mail mehr (07.07.2026), nur Log
         if late_notes:
-            send_whatsapp(
-                f"Hi Noah, Cloude hier ⏰\n\n"
-                f"Verspätungs-/Frühgeh-Hinweise für {wtag}, {datum}:\n\n"
-                + "\n".join(f"{n}" for n in late_notes) +
-                f"\n\nSind im Plan eingetragen."
-            )
+            print(f"[INFO] Verspaetungs-/Fruehgeh-Hinweise fuer {datum} (keine Mail): {late_notes}")
 
-        # Notification: ≤2 Turner in Gruppe (einmalig beim Erstellen)
-        if soft_warnings:
-            warn_text = "\n".join(f"• {t}" for _, t in soft_warnings)
+        # Notification: Trainer-Engpass -> Gruppen zusammengelegt (einmalig, kurze Mail)
+        low_trainer_warn = [(k, t) for k, t in soft_warnings if k.startswith("low_trainer_")]
+        if low_trainer_warn:
             send_whatsapp(
-                f"Hi Noah, Cloude hier ⚠️\n\n"
-                f"Hinweis für {wtag}, {datum}:\n\n"
-                f"{warn_text}\n\n"
-                f"Plan wurde trotzdem erstellt – nur zur Info."
+                f"Hallo, da am {wtag}, {datum} nur wenige Trainer da sind, werden die Gruppen zusammengelegt."
             )
+        other_warnings = [t for k, t in soft_warnings if not k.startswith("low_trainer_")]
+        if other_warnings:
+            print(f"[INFO] Weitere Hinweise fuer {datum} (keine Mail): {other_warnings}")
 
-        # Haupt-Notification: Plan fertig (immer)
-        anm_text = ""
-        if anmerkungen_server:
-            anm_text = f"\nAnmerkungen:\n" + "\n".join(
-                f"• {a.get('trainer','')}: {a.get('notiz','').strip()}"
-                for a in anmerkungen_server if a.get("notiz","").strip()
-            ) + "\n"
-        send_whatsapp(
-            f"Hi Noah, Cloude hier 🎉\n\n"
-            f"Trainingsplan für {wtag}, {datum} ist fertig und auf der Website!\n\n"
-            f"Geräte: {geraet_1} + {geraet_2}\n"
-            f"Abwesend:\n"
-            f"  Trainer: {', '.join(absences.get('Trainer','')) or 'Alle da'}\n"
-            f"  G1: {', '.join(absences.get('G1','')) or 'Alle da'}\n"
-            f"  G2: {', '.join(absences.get('G2','')) or 'Alle da'}\n"
-            f"  G3: {', '.join(absences.get('G3','')) or 'Alle da'}\n"
-            f"  G4: {', '.join(absences.get('G4','')) or 'Alle da'}"
-            f"{anm_text}"
-            f"\ntv-rheinzabern.e-websolutions.de"
-        )
+        # Haupt-Notification: Plan fertig (immer, ganz kurz)
+        send_whatsapp(f"Hallo, der Trainingsplan für {wtag}, {datum} ist erstellt.")
         print(f"FERTIG! Plan fuer {datum} hochgeladen.")
 
     sftp.close()
