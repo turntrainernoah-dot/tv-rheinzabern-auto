@@ -20,7 +20,9 @@ PASS = os.environ["SSH_PASSWORD"]
 PORT = int(os.environ.get("SSH_PORT", "22"))
 GMAIL_USER = os.environ.get("GMAIL_USER", "")
 GMAIL_APP  = os.environ.get("GMAIL_APP_PASSWORD", "")
-EMAIL_TO   = os.environ.get("EMAIL_TO", "noahwoe0212@gmail.com")
+# Bestaetigung geht an Noahs persoenliche Adresse (+ optional EMAIL_TO-Secret)
+RECIPIENTS = list(dict.fromkeys(
+    r for r in ["noahwoe0212@gmail.com", os.environ.get("EMAIL_TO", "")] if r))
 
 BASE    = os.path.dirname(os.path.abspath(__file__))
 WORK    = os.path.join(BASE, "wc_video_work")
@@ -101,12 +103,12 @@ def send_mail(subject, body):
     msg = MIMEText(body, _charset="utf-8")
     msg["Subject"] = subject
     msg["From"] = GMAIL_USER
-    msg["To"] = EMAIL_TO
+    msg["To"] = ", ".join(RECIPIENTS)
     ctx = ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
         s.login(GMAIL_USER, GMAIL_APP)
-        s.sendmail(GMAIL_USER, [EMAIL_TO], msg.as_string())
-    print("[mail] gesendet an", EMAIL_TO)
+        s.sendmail(GMAIL_USER, RECIPIENTS, msg.as_string())
+    print("[mail] gesendet an", ", ".join(RECIPIENTS))
 
 
 def main():
