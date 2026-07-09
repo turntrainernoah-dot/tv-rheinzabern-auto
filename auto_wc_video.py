@@ -11,6 +11,7 @@ Laeuft OHNE PC:
 Geplant: Donnerstag 22:00 (fuer die kommende Woche Sa-Di).
 """
 import os, sys, glob, ssl, smtplib, traceback, shutil
+from datetime import date, timedelta
 from email.mime.text import MIMEText
 import paramiko
 
@@ -34,6 +35,36 @@ STATE   = os.path.join(WORK, "wc_state.json")
 
 REMOTE_SRC  = "/wc_video_source"           # Quell-Clips + verlauf.json
 REMOTE_DEST = "/wochen-challenge-videos"   # Ziel der fertigen Videos
+
+WC_EVENT = os.environ.get("WC_EVENT", "workflow_dispatch")  # 'schedule' oder 'workflow_dispatch'
+
+
+def target_sam_str():
+    """Naechster Samstag (wie build_step) -> Dateiname-Datum der Zielwoche."""
+    today = date.today()
+    days = (5 - today.weekday()) % 7
+    if days == 0:
+        days = 7
+    sam = today + timedelta(days=days)
+    return sam.strftime("%d.%m.%y")
+
+
+def already_done_this_week():
+    """True, wenn die Videos der Zielwoche schon auf dem Server liegen.
+    Verhindert bei mehreren Cron-Zeiten einen zweiten (abweichenden) Build.
+    Manuelles workflow_dispatch baut IMMER (kein Skip)."""
+    if WC_EVENT != "schedule":
+        return False
+    sam = target_sam_str()
+    want = {f"Wochenchallenge ab {sam} leicht.mp4", f"Wochenchallenge ab {sam} schwer.mp4"}
+    sftp, t = sftp_open()
+    try:
+        have = set(sftp.listdir(REMOTE_DEST))
+    except Exception:
+        have = set()
+    finally:
+        sftp.close(); t.close()
+    return want.issubset(have)
 
 
 def sftp_open():
@@ -112,6 +143,9 @@ def send_mail(subject, body):
 
 
 def main():
+    if already_done_this_week():
+        print(f"[skip] Videos fuer Woche ab {target_sam_str()} existieren bereits - kein erneuter Build (event={WC_EVENT}).")
+        return
     if os.path.isdir(WORK):
         shutil.rmtree(WORK, ignore_errors=True)
     n = download_sources()
