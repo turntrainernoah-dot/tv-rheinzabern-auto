@@ -743,10 +743,11 @@ def _build_lowstaff_plan(available, abwesend):
 
 
 
-def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
+def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_timing=None):
     abwesend  = absences.get("Trainer", [])
     available = [t for t in ALLE_TRAINER if t not in abwesend]
     n = len(available)
+    trainer_timing = trainer_timing or {}
 
     # anwesende Kinder je Gruppe
     present = {g: max(0, len(ALLE_TURNER[g]) - len(absences.get(g, []))) for g in ("G1","G2","G3","G4")}
@@ -761,38 +762,71 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
         anmerkungen.insert(0, "ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
         return {t: None for t in ALLE_TRAINER}, {}, anmerkungen
 
+    # Vollzeit-Trainer (halten eine Gruppe komplett) vs. partielle (frueh/spaet).
+    # Ein frueh gehender / spaet kommender Trainer darf keine Gruppe ALLEIN halten
+    # -> zaehlt nicht als Halter, wird Springer; die Vollzeit-Trainer uebernehmen.
+    partial_set  = {t for t in available if t in trainer_timing}
+    full_holders = [t for t in available if t not in partial_set]
+    holders_pool = full_holders if full_holders else list(available)   # Notlage-Fallback
+    n_hold = len(holders_pool)
+
+    MIN_KIDS = 3   # jede Gruppe braucht >= 3 anwesende Turner, sonst zusammenlegen
+
     # ---- Einheiten bilden ----
     units = [[g] for g in active]
     def ucount(u): return sum(present[g] for g in u)
     def crosses(a, b): return a[-1] == "G2" and b[0] == "G3"   # G2|G3-Grenze = last resort
-    def best_merge(units):
+    def _merge_at(i, j):
+        lo, hi = sorted((i, j))
+        units[lo] = units[lo] + units[hi]
+        del units[hi]
+    def best_merge():
         best = None
         for i in range(len(units)-1):
-            a, b = units[i], units[i+1]
-            combined = ucount(a) + ucount(b)
-            score = combined + (1000 if crosses(a, b) else 0)
+            combined = ucount(units[i]) + ucount(units[i+1])
+            score = combined + (1000 if crosses(units[i], units[i+1]) else 0)
             if best is None or score < best[0]:
-                best = (score, i, combined)
+                best = (score, i)
         return best
-    # zu wenig Trainer -> zusammenlegen bis units <= n
-    while len(units) > n:
-        _, i, _ = best_merge(units)
-        units[i] = units[i] + units[i+1]; del units[i+1]
 
-    # ---- Julian-Springer-Prinzip ----
-    julian_present = any(t.startswith("Julian") for t in available)
-    if julian_present and (n - len(units)) == 0 and len(units) >= 2:
-        bm = best_merge(units)
-        if bm is not None and bm[2] <= 8:      # nur wenn zusammengelegte Gruppe <= 8 Kids
-            _, i, _ = bm
-            units[i] = units[i] + units[i+1]; del units[i+1]
+    # 1) Mindestgroesse: zu kleine Gruppe (<3) mit bestem Nachbarn (gleiche Seite bevorzugt) mergen
+    def _merge_undersized():
+        for i, u in enumerate(units):
+            if ucount(u) < MIN_KIDS and len(units) > 1:
+                cands = []
+                if i > 0: cands.append(i-1)
+                if i < len(units)-1: cands.append(i+1)
+                best = None
+                for jj in cands:
+                    a, b = (units[jj], units[i]) if jj < i else (units[i], units[jj])
+                    sc = ucount(a) + ucount(b) + (1000 if crosses(a, b) else 0)
+                    if best is None or sc < best[0]:
+                        best = (sc, jj)
+                _merge_at(i, best[1])
+                return True
+        return False
+    while _merge_undersized():
+        pass
+
+    # 2) Nicht mehr Gruppen als Vollzeit-Trainer -> weiter zusammenlegen (kleinste Paarung)
+    while len(units) > max(1, n_hold):
+        bm = best_merge()
+        if not bm: break
+        _merge_at(bm[1], bm[1]+1)
+
+    # 3) Julian-Springer-Prinzip (nur mit Vollzeit-Haltern, zusammengelegte Gruppe <= 8)
+    julian_present = any(t.startswith("Julian") for t in holders_pool)
+    if julian_present and (n_hold - len(units)) == 0 and len(units) >= 2:
+        bm = best_merge()
+        if bm is not None and (ucount(units[bm[1]]) + ucount(units[bm[1]+1])) <= 8:
+            _merge_at(bm[1], bm[1]+1)
 
     # G4-Zeit-Hinweis, wenn G4 in einer Zusammenlegung ist
     if any(len(u) >= 2 and "G4" in u for u in units):
         anmerkungen.append("Gruppe 4 hat zwischen 17:00-19:00 Training")
 
-    # ---- Trainer den Einheiten zuordnen ----
-    pool = list(available)
+    # ---- Trainer den Einheiten zuordnen: nur Vollzeit-Halter bekommen Gruppen ----
+    pool = list(holders_pool)
     def pop_first(name):
         for i, t in enumerate(pool):
             if t.startswith(name): return pool.pop(i)
@@ -816,6 +850,10 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2):
             springers.append(t)
         else:
             assigned[t] = idx; taken.add(idx)
+    # partielle (frueh/spaet) + uebrige Vollzeit-Trainer -> Springer
+    for t in available:
+        if t not in assigned and t not in springers:
+            springers.append(t)
 
     # ---- Farben / Templates ----
     def farbe(gruppe, phase):
@@ -1781,7 +1819,7 @@ def main():
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (UPDATE).")
         else:
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, geraet_1, geraet_2, g1_starts_g2
+                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
@@ -1947,7 +1985,7 @@ def main():
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (NEW).")
         else:
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, geraet_1, geraet_2, g1_starts_g2
+                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
