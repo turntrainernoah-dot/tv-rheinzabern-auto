@@ -162,7 +162,7 @@ def write_tmp(tmp_path, dest):
 
 def render_intro(level_label, materialien, zeitraum, out):
     mat_list = ', '.join(dedup_materialien(materialien))
-    mat = f"Material: {mat_list}" if mat_list else 'Kein Material nötig!'
+    mat = f"Material\\: {mat_list}" if mat_list else 'Kein Material nötig!'
     dur = 4.0
     vf  = (f"drawtext=fontfile={FONT}:fontsize=52:fontcolor=white"
            f":x=(w-tw)/2:y=(h-th)/2-60:text='Wochenchallenge {level_label}'"
