@@ -1,0 +1,43 @@
+name: Wochenchallenge Videos (auto)
+
+on:
+  schedule:
+    # Donnerstag 20:00 UTC = 22:00 CEST (Sommer) / 21:00 CET (Winter).
+    # Primaerer, zuverlaessiger Trigger: Google Apps Script (Do 22:00 Berlin) via workflow_dispatch.
+    - cron: '0 20 * * 4'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System-Abhaengigkeiten (ffmpeg + Schriften)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-dejavu-core fontconfig
+          sudo mkdir -p /usr/share/fonts/truetype/google-fonts /usr/share/fonts/truetype/dejavu
+          sudo cp fonts/Poppins-Bold.ttf /usr/share/fonts/truetype/google-fonts/Poppins-Bold.ttf
+          sudo cp fonts/DejaVuSans-Bold.ttf /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
+          sudo fc-cache -f >/dev/null 2>&1 || true
+
+      - name: Python-Abhaengigkeiten
+        run: pip install --quiet paramiko
+
+      - name: Videos bauen und hochladen
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python auto_wc_video.py
