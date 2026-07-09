@@ -2,9 +2,14 @@ name: Wochenchallenge Videos (auto)
 
 on:
   schedule:
-    # Donnerstag 20:00 UTC = 22:00 CEST (Sommer) / 21:00 CET (Winter).
-    # Primaerer, zuverlaessiger Trigger: Google Apps Script (Do 22:00 Berlin) via workflow_dispatch.
+    # Donnerstag abends (UTC). Mehrere Zeiten als Redundanz, da GitHub-Cron
+    # gelegentlich Laeufe verspaetet/auslaesst. Die Doppel-Bau-Sperre im Script
+    # (already_done_this_week) sorgt dafuer, dass nur der ERSTE erfolgreiche Lauf baut.
+    # 20:00 UTC = 22:00 CEST (Sommer) / 21:00 CET (Winter).
     - cron: '0 20 * * 4'
+    - cron: '25 20 * * 4'
+    - cron: '0 21 * * 4'
+    - cron: '30 21 * * 4'
   workflow_dispatch: {}
 
 permissions:
@@ -40,4 +45,5 @@ jobs:
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          WC_EVENT: ${{ github.event_name }}
         run: python auto_wc_video.py
