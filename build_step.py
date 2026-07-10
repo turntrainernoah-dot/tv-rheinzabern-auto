@@ -507,25 +507,20 @@ def scan_upload():
 
 
 def _fill_typmix(pool, n):
-    """Waehlt n Uebungen (Pool ist nach SW/LRU vorsortiert):
-    Typ-Abwechslung (k/d/s), hoechstens max_s Sonstiges, mindestens min_d Dehnen (falls vorhanden)."""
+    """Waehlt n Uebungen mit Zielverteilung ~50% Kraft / 30% Dehnen / 20% Sonstiges
+    (soweit der Pool es hergibt) und Typ-Abwechslung."""
     pool = list(pool)
     result = []
     last_typ = None
-    max_s = max(1, n // 3)
-    min_d = 1 if any(u.get("typ") == "d" for u in pool) else 0
+    tgt = {"k": round(n * 0.5), "d": round(n * 0.3)}
+    tgt["s"] = max(0, n - tgt["k"] - tgt["d"])
     def cnt(t):
         return sum(1 for u in result if u.get("typ") == t)
+    def avail(t):
+        return any(u.get("typ") == t for u in pool)
     while len(result) < n and pool:
-        remaining = n - len(result)
-        need_d = min_d - cnt("d")
-        cand = [u for u in pool if not (u.get("typ") == "s" and cnt("s") >= max_s)]
-        if not cand:
-            cand = list(pool)
-        if need_d > 0 and remaining <= need_d:
-            d_cand = [u for u in cand if u.get("typ") == "d"]
-            if d_cand:
-                cand = d_cand
+        under = [t for t in ("k", "d", "s") if cnt(t) < tgt.get(t, 0) and avail(t)]
+        cand = [u for u in pool if u.get("typ") in under] if under else list(pool)
         diff = [u for u in cand if u.get("typ") != last_typ]
         pick = diff if diff else cand
         ub = pick[0]
