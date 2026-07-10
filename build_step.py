@@ -38,6 +38,23 @@ MAX_SEC    = 670
 OVERHEAD   = 8
 MAX_OVERLAP = 3
 
+# Nummern, die NIE zusammen in einer Wochenchallenge vorkommen duerfen (Noah 10.07.26)
+INKOMPATIBEL = {frozenset((11, 29))}
+def _nrint(x):
+    try: return int(str(x))
+    except Exception: return None
+def _drop_inkompatibel(alle, lu):
+    """Bei einem verbotenen Paar bleibt nur die LAENGER nicht verwendete Nummer (LRU); die andere faellt raus."""
+    alle = list(alle)
+    for pair in INKOMPATIBEL:
+        present = [u for u in alle if _nrint(u.get("nr")) in pair]
+        if len(present) >= 2:
+            present.sort(key=lambda u: lu.get(u.get("nr"), "2000-01-01"), reverse=True)
+            drop = present[0]
+            alle = [u for u in alle if u is not drop]
+            print(f"[inkompatibel] Nr {drop.get('nr')} entfernt (Paar {tuple(pair)})")
+    return alle
+
 # ⭐ Video wird 40px nach unten verschoben, unten 40px abgeschnitten
 SCALE = (f"scale={W}:{H}:force_original_aspect_ratio=decrease,"
          f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black,"
@@ -489,20 +506,32 @@ def scan_upload():
     return result
 
 
-def _fill_typmix(pool, count, cycle=True):
-    """Fill 'count' exercises from pool with type alternation. Cycles if needed."""
-    result, used, last_typ = [], list(pool), None
-    while len(result) < count:
-        if not used:
-            if not cycle:
-                break
-            used = list(pool)
-        diff = [u for u in used if u['typ'] != last_typ]
-        same = [u for u in used if u['typ'] == last_typ]
-        ub = (diff if diff else same)[0]
-        used.remove(ub)
+def _fill_typmix(pool, n):
+    """Waehlt n Uebungen (Pool ist nach SW/LRU vorsortiert):
+    Typ-Abwechslung (k/d/s), hoechstens max_s Sonstiges, mindestens min_d Dehnen (falls vorhanden)."""
+    pool = list(pool)
+    result = []
+    last_typ = None
+    max_s = max(1, n // 3)
+    min_d = 1 if any(u.get("typ") == "d" for u in pool) else 0
+    def cnt(t):
+        return sum(1 for u in result if u.get("typ") == t)
+    while len(result) < n and pool:
+        remaining = n - len(result)
+        need_d = min_d - cnt("d")
+        cand = [u for u in pool if not (u.get("typ") == "s" and cnt("s") >= max_s)]
+        if not cand:
+            cand = list(pool)
+        if need_d > 0 and remaining <= need_d:
+            d_cand = [u for u in cand if u.get("typ") == "d"]
+            if d_cand:
+                cand = d_cand
+        diff = [u for u in cand if u.get("typ") != last_typ]
+        pick = diff if diff else cand
+        ub = pick[0]
+        pool.remove(ub)
         result.append(ub)
-        last_typ = ub['typ']
+        last_typ = ub.get("typ")
     return result
 
 
@@ -513,6 +542,7 @@ def select_exercises_pair(alle, verlauf):
     Max MAX_OVERLAP exercises shared between the two videos.
     """
     lu = verlauf.get('letzte_verwendung', {})
+    alle = _drop_inkompatibel(alle, lu)
 
     # How many exercises per video
     per_ex = ERKL_WIN + EXEC_SECS
