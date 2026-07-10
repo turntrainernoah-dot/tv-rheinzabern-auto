@@ -59,7 +59,7 @@ def already_done_this_week():
     want = {f"Wochenchallenge ab {sam} leicht.mp4", f"Wochenchallenge ab {sam} schwer.mp4"}
     sftp, t = sftp_open()
     try:
-        have = set(sftp.listdir(REMOTE_DEST))
+        have = set(sftp.listdir(f"{REMOTE_DEST}/leicht")) | set(sftp.listdir(f"{REMOTE_DEST}/schwer"))
     except Exception:
         have = set()
     finally:
@@ -118,8 +118,24 @@ def upload_results(videos):
     sftp, t = sftp_open()
     try:
         for v in videos:
-            sftp.put(v, f"{REMOTE_DEST}/{os.path.basename(v)}")
-            print("[upload]", os.path.basename(v))
+            base = os.path.basename(v)
+            _low = base.lower()
+            _level = "leicht" if "leicht" in _low else ("schwer" if "schwer" in _low else "")
+            _subdir = f"{REMOTE_DEST}/{_level}" if _level else REMOTE_DEST
+            try: sftp.stat(_subdir)
+            except Exception:
+                try: sftp.mkdir(_subdir)
+                except Exception: pass
+            try:
+                for _old in sftp.listdir(_subdir):
+                    if _old.lower().endswith((".mp4", ".mov")):
+                        try: sftp.remove(f"{_subdir}/{_old}")
+                        except Exception: pass
+            except Exception: pass
+            sftp.put(v, f"{_subdir}/{base}")
+            print("[upload]", _level, base)
+            try: sftp.remove(f"{REMOTE_DEST}/{base}")
+            except Exception: pass
         if os.path.exists(VERLAUF):
             sftp.put(VERLAUF, f"{REMOTE_SRC}/verlauf.json")
             print("[upload] verlauf.json zurueckgeschrieben")
