@@ -248,7 +248,7 @@ def create_xlsx():
             # A: Name
             c = ws.cell(row=cur,column=1)
             c.value=f"  {name}"; c.fill=rf
-            c.font=fnt(11,color=("FF0000" if name in ABWESEND else "1A1A2E"))
+            c.font=fnt(11,color=("FF0000" if name.split()[0] in ABWESEND else "1A1A2E"))
             c.alignment=aln("left","center"); c.border=thin()
             # B-E: Tage
             for t in range(4):
@@ -351,7 +351,7 @@ def create_pdf():
                   ("ALIGN",(1,r),(6,r),"CENTER"),("VALIGN",(0,r),(6,r),"MIDDLE"),
                   ("BACKGROUND",(6,r),(6,r),hx(C_INSG_BG)),
                   ("FONTNAME",(6,r),(6,r),"Helvetica-Bold")]
-            if name in ABWESEND:
+            if name.split()[0] in ABWESEND:
                 st.append(("TEXTCOLOR",(0,r),(0,r),rl.HexColor("#FF0000")))
             for t in range(4):
                 if t in tage:
