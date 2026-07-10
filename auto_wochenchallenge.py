@@ -211,6 +211,20 @@ def migrate_vorpunkte_keys(alle_vorpunkte):
         print(f"[MIGRATION] {changed} Vorpunkte-Keys auf neues Format migriert.")
     return migrated
 
+def _load_server_ledger(sftp):
+    import json
+    try:
+        f = sftp.open("wc_punkte_ledger.json", "rb"); d = json.loads(f.read().decode("utf-8")); f.close(); return d
+    except Exception as e:
+        print("[WARN] Ledger nicht ladbar:", e); return {"init_offset": {}, "weeks": {}, "order": []}
+
+def _ledger_base_vor(ledger, cname, week_iso):
+    tot = ledger.get("init_offset", {}).get(cname, 0)
+    for iso, wd in ledger.get("weeks", {}).items():
+        if iso < week_iso:
+            tot += wd.get("results", {}).get(cname, 0)
+    return tot
+
 def load_wc_state(sftp):
     try:
         f     = sftp.open("wc_state_auto.json", "r")
@@ -737,13 +751,15 @@ def main():
     # VORHERIGE_PUNKTE aus State
     # WICHTIG: .get() mit Default hilft nur wenn Key fehlt, nicht wenn Value leer ({})
     all_vorpunkte = wc_state.get("alle_vorpunkte") or DEFAULT_VORPUNKTE.copy()
+    ledger = _load_server_ledger(sftp)
+    week_iso = week_start.strftime("%Y-%m-%d")
     if not wc_state.get("alle_vorpunkte"):
         print("[WARN] alle_vorpunkte leer/fehlend im State → verwende DEFAULT_VORPUNKTE")
     vorherige     = {}
     for grp, members in gruppen.items():
         for name in members:
             key = f"{grp}_{name}"
-            vorherige[key] = all_vorpunkte.get(key, 0)
+            vorherige[key] = _ledger_base_vor(ledger, name, week_iso)
 
     # TAGE_HEADER
     tage_header = []
@@ -834,12 +850,23 @@ def main():
     else:
         print(f"[WARN] XLSX nicht gefunden, nur PDF hochgeladen.")
 
-    # Neue Vorpunkte berechnen (altes Total + diese Woche)
+    # Woche ins zentrale LEDGER schreiben (idempotent) + hochladen -> Board/"letzte Woche"
+    week_iso = week_start.strftime("%Y-%m-%d")
+    _results = {}
     for grp, members in gruppen.items():
         for name, tage in members.items():
-            key = f"{grp}_{name}"
-            old = all_vorpunkte.get(key, 0)
-            all_vorpunkte[key] = old + len(tage)
+            _results[name] = len(tage)
+    ledger.setdefault("weeks", {})[week_iso] = {
+        "label": week_start.strftime("%d.%m"),
+        "start": week_start.strftime("%d.%m.%Y"),
+        "end": (week_start + timedelta(days=num_days - 1)).strftime("%d.%m.%Y"),
+        "tage": num_days, "results": _results}
+    ledger["order"] = sorted(ledger["weeks"].keys())
+    import json as _json
+    with open("/tmp/wc_punkte_ledger.json", "w", encoding="utf-8") as _lf:
+        _json.dump(ledger, _lf, ensure_ascii=False, indent=1)
+    sftp.put("/tmp/wc_punkte_ledger.json", "wc_punkte_ledger.json")
+    print(f"[OK] Ledger aktualisiert + hochgeladen (Woche {week_iso})")
 
     wc_state["last_processed_week_start"] = week_start_short
     wc_state["last_email_hash"]           = email_hash   # NEU: E-Mail-Hash speichern
