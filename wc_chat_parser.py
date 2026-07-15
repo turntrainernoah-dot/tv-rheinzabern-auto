@@ -63,16 +63,26 @@ REGELN:
    "Ben F."), nie den Spitznamen.
 2. Wer eine Nachricht schreibt, meldet normalerweise SICH SELBST - ausser der Text
    nennt klar eine andere Person.
-3. DATUM: Jede WhatsApp-Zeile beginnt mit einem Zeitstempel wie
-   "[06.06.26, 14:23] Name: ...". Nutze diesen Zeitstempel als Bezug:
-     - "gestern"  -> Tag vor dem Nachrichtendatum
-     - "heute" / keine Angabe -> das Nachrichtendatum
-     - "am Montag"/"Montag" -> der betreffende Wochentag in der Woche der Nachricht
-   Gib das aufgeloeste Datum als "DD.MM" aus (Tag.Monat, zweistellig).
-4. Ignoriere alles, was keine Trainings-Meldung ist (Smalltalk, Fragen, Emojis allein).
-5. Dieselbe Person am selben Tag = nur EIN Eintrag (keine Duplikate).
-6. Kannst du eine Meldung keinem Roster-Namen sicher zuordnen, LASS SIE WEG und
-   trage sie unter "unsure" mit kurzer Begruendung ein.
+3. DATUM pro Meldung aus dem Zeitstempel "[TT.MM.JJ, HH:MM] Name: ...":
+     - "heute" / keine Tagesangabe   -> das Nachrichtendatum
+     - "gestern" / "fuer gestern" / "und fuer gestern" / "noch fuer gestern" /
+       "nachtraeglich" / "war gestern auch da"  -> Tag VOR dem Nachrichtendatum.
+       Das ist ein EIGENER, ZUSAETZLICHER Trainingstag - nicht das Nachrichtendatum ersetzen!
+     - "vorgestern"                   -> zwei Tage vor dem Nachrichtendatum
+     - "am Montag" / "Montag" / Wochentagsname -> der betreffende Wochentag der Nachrichtenwoche
+   Ausgabe als "DD.MM" (zweistellig).
+4. Ignoriere alles, was keine Trainings-Meldung ist (Smalltalk, Fragen, reine Emojis).
+5. Eine Person kann an MEHREREN Tagen trainiert haben. Sammle ALLE gemeldeten Tage einer
+   Person aus ALLEN ihren Nachrichten - auch spaetere Nachtraege und "fuer gestern"-Meldungen.
+   Pro Person und Tag nur EIN Eintrag (keine Duplikate am selben Tag).
+6. SAMMEL-/FREITEXT-Aussagen (auch ohne Zeitstempel, egal wo im Text), z.B.
+   "X hat jeden Tag trainiert", "X war immer/jedes Mal da", "X an allen Tagen":
+   bedeuten, dass X an ALLEN Trainingstagen des Zeitraums trainiert hat. Der Zeitraum
+   ergibt sich aus den Datumsangaben im Chat (fruehestes bis spaetestes Datum, i.d.R.
+   Samstag bis Dienstag, 4-5 Tage). Gib fuer X je EINEN Eintrag pro Tag dieses Zeitraums aus.
+7. Kannst du eine Meldung keinem Roster-Namen sicher zuordnen, LASS SIE WEG und trage sie
+   unter "unsure" mit kurzer Begruendung ein. Aber verwirf NIEMALS eine sichere Meldung nur
+   weil sie nachtraeglich, als "fuer gestern" oder als Sammelaussage kam.
 
 Antworte AUSSCHLIESSLICH mit JSON in genau dieser Form, ohne Markdown, ohne Text:
 {"entries":[{"date":"DD.MM","name":"Kanonischer Name"}, ...],
@@ -111,6 +121,67 @@ def _validate_name(raw_name, lookup):
     if n2 in lookup:
         return lookup[n2]
     return None
+
+
+def _augment_deterministic(raw_chat, clean_str, name_map):
+    """Sichert zwei KI-Schwachstellen deterministisch ab:
+       - 'X hat jeden Tag trainiert' / 'immer da'  -> X an ALLEN Tagen des Zeitraums
+       - 'fuer gestern' / 'gestern'-Nachtraege     -> zusaetzlicher Tag (Nachrichtendatum - 1)
+    Ergaenzt fehlende Eintraege ohne Doppelung. Namen ueber NAME_MAP-Aliasse."""
+    import datetime
+    lookup = {str(k).lower(): v[1] for k, v in name_map.items() if k}
+    entries = set()
+    for ln in clean_str.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        parts = ln.split(" ", 1)
+        if len(parts) == 2:
+            entries.add((parts[0], parts[1]))
+    added = []
+    def to_dt(dm):
+        dd, mm = dm.split("."); return datetime.date(2026, int(mm), int(dd))
+    def find_name(text):
+        t = " " + str(text).lower() + " "
+        best = None
+        for alias, canon in lookup.items():
+            if re.search(r"(?<![0-9a-z\u00e4\u00f6\u00fc\u00df])" + re.escape(alias) + r"(?![0-9a-z\u00e4\u00f6\u00fc\u00df])", t):
+                if best is None or len(alias) > len(best[0]):
+                    best = (alias, canon)
+        return best[1] if best else None
+    dates = []
+    for d, _ in entries:
+        try: dates.append(to_dt(d))
+        except Exception: pass
+    if dates:
+        dmin, dmax = min(dates), max(dates)
+        rng = []; d = dmin
+        while d <= dmax:
+            rng.append(d); d = d + datetime.timedelta(days=1)
+        for m in re.finditer(r"[^\n.!?]*\b(?:jeden\s+tag|jeden\s+trainingstag|immer\s+da|jedes\s*mal|an\s+allen\s+tagen|alle\s+tage)\b[^\n.!?]*", raw_chat, re.I):
+            canon = find_name(m.group(0))
+            if not canon: continue
+            for dd in rng:
+                key = ("%02d.%02d" % (dd.day, dd.month), canon)
+                if key not in entries:
+                    entries.add(key); added.append("jeden-tag %s %s" % key)
+    msg_re = re.compile(r"\[\s*\d{1,2}:\d{2},\s*(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s*\]\s*([^:]*):\s*(.*)")
+    for line in raw_chat.splitlines():
+        mm = msg_re.match(line.strip())
+        if not mm: continue
+        day, mon, yr = int(mm.group(1)), int(mm.group(2)), int(mm.group(3))
+        body = mm.group(5)
+        if yr < 100: yr += 2000
+        if not re.search(r"\bgestern\b|nachtr\u00e4glich|nachtraeglich", body, re.I): continue
+        try: prev = datetime.date(yr, mon, day) - datetime.timedelta(days=1)
+        except Exception: continue
+        canon = find_name(body) or find_name(mm.group(4))
+        if not canon: continue
+        key = ("%02d.%02d" % (prev.day, prev.month), canon)
+        if key not in entries:
+            entries.add(key); added.append("fuer-gestern %s %s" % key)
+    lines = sorted("%s %s" % (d, n) for d, n in entries)
+    return "\n".join(lines), added
 
 
 def chat_to_clean_body(raw_chat, name_map, gruppen_template,
@@ -152,7 +223,15 @@ def chat_to_clean_body(raw_chat, name_map, gruppen_template,
     if content is None:
         raise RuntimeError("GitHub-Models-Aufruf fehlgeschlagen: " + " | ".join(errors))
 
-    return clean_from_model_json(content, name_map, verbose=verbose)
+    clean, info = clean_from_model_json(content, name_map, verbose=False)
+    clean, added = _augment_deterministic(raw_chat, clean, name_map)
+    info["deterministic_added"] = added
+    info["count"] = len([l for l in clean.splitlines() if l.strip()])
+    if verbose:
+        print("[KI-PARSER] %d Eintraege, %d deterministisch ergaenzt, %d verworfen, %d unsicher." % (
+            info["count"], len(added), len(info.get("dropped", [])), len(info.get("unsure", []))))
+        for a in added: print("  [det+] " + a)
+    return clean, info
 
 
 def clean_from_model_json(content, name_map, verbose=True):
