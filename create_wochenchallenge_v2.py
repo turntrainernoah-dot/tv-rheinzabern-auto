@@ -181,6 +181,20 @@ def medium():
 def get_vor(gruppe, name):
     return VORHERIGE_PUNKTE.get(f"{gruppe}_{name}", 0)
 
+def _mp_state():
+    import json as _j, os as _o
+    _p=_o.path.join(_o.path.dirname(_o.path.abspath(__file__)),"murmel_punkte_state.json")
+    if not _o.path.exists(_p): return {"evalBase":{},"redeemed":{}}
+    try: _d=_j.load(open(_p,encoding="utf-8"))
+    except Exception: return {"evalBase":{},"redeemed":{}}
+    _ev=_d.get("evalBase"); _rd=_d.get("redeemed")
+    return {"evalBase":_ev if isinstance(_ev,dict) else {}, "redeemed":_rd if isinstance(_rd,dict) else {}}
+_MP_STATE=_mp_state()
+def get_reset(gruppe, name):
+    """Board-Reset-Stand: G1/G2 -> evalBase, G3/G4 -> redeemed. Namen bereits kanonisch."""
+    if gruppe in ("G1","G2"): return int(_MP_STATE["evalBase"].get(name,0))
+    return int(_MP_STATE["redeemed"].get(name,0))
+
 # ===================================================================
 #  EXCEL ERSTELLEN
 # ===================================================================
@@ -262,9 +276,9 @@ def create_xlsx():
             c.value=f"=COUNTA(B{cur}:E{cur})"
             c.font=fnt(13,bold=True,color=C_WHITE); c.alignment=aln("center","center"); c.border=thin()
             # G: Insgesamt
-            vor=get_vor(gk,name)
+            base=get_vor(gk,name)-get_reset(gk,name)
             c=ws.cell(row=cur,column=7)
-            c.value=f"={vor}+COUNTA(B{cur}:E{cur})" if vor else f"=COUNTA(B{cur}:E{cur})"
+            c.value=f"=MAX(0,{base}+COUNTA(B{cur}:E{cur}))"
             c.fill=fill(C_INSG_BG); c.font=fnt(13,bold=True,color="1A1A2E")
             c.alignment=aln("center","center"); c.border=thin()
             last_data=cur; cur+=1
@@ -274,7 +288,7 @@ def create_xlsx():
     ws[f"A{cur}"].fill=fill(C_SEPARATOR); cur+=1
     ws.row_dimensions[cur].height=18; ws.merge_cells(f"A{cur}:G{cur}")
     c=ws[f"A{cur}"]
-    c.value="  Legende: ✓ = trainiert | 0–1 \U0001F534 | 2 \U0001F7E0 | 3–4 \U0001F7E2 | Insgesamt = Saison-Punkte"
+    c.value="  Legende: ✓ = trainiert | 0–1 \U0001F534 | 2 \U0001F7E0 | 3–4 \U0001F7E2 | Insgesamt = aktuell verdient"
     c.fill=fill(C_LEGEND_BG); c.font=fnt(9,italic=True,color="555555"); c.alignment=aln("left","center")
 
     # Conditional Formatting F-Spalte
@@ -342,7 +356,7 @@ def create_pdf():
         r+=1; alt=True
 
         for name,tage in mitglieder.items():
-            punkte=len(tage); vor=get_vor(gk,name); ins=vor+punkte
+            punkte=len(tage); ins=max(0, get_vor(gk,name)-get_reset(gk,name)+punkte)
             bg=hx(C_ROW_LIGHT) if alt else hx(C_ROW_GREY); alt=not alt
             row=[f"  {name}"]+["✓" if t in tage else "" for t in range(4)]+[str(punkte),str(ins)]
             data.append(row)
