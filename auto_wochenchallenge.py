@@ -778,6 +778,13 @@ def main():
         with open(abm_local, "w", encoding="utf-8") as fj:
             fj.write("[]")
 
+    # murmel_punkte_state.json fuer Insgesamt=aktuell-verdient (Board-Reset-Stand, Phase 2)
+    try:
+        sftp.get("murmel_punkte_state.json", "/tmp/murmel_punkte_state.json")
+        print("[OK] murmel_punkte_state.json heruntergeladen -> /tmp")
+    except Exception as e:
+        print(f"[WARN] murmel_punkte_state.json fehlt: {e} -> Insgesamt = voller Ledger-Stand")
+
     # Template laden und CONFIG ersetzen
     template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "create_wochenchallenge_v2.py")
