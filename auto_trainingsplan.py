@@ -1339,6 +1339,34 @@ def _ki_norm_merge(label):
     parts = [p for p in re.split(r'\+', str(label or "").replace(" ", "")) if p in ("G1", "G2", "G3", "G4")]
     return "+".join(sorted(parts, key=lambda x: int(x[1]))) if len(parts) >= 2 else None
 
+def _merge_small_singletons(groups, present, min_kids=3):
+    """Legt zu kleine (<min_kids anwesende Kinder) benachbarte Einzelgruppen zusammen.
+    Bevorzugt gleiche Geraeteseite; die G2|G3-Grenze ist letzter Ausweg.
+    (Noah 16.07.2026: auch im KI-/Anmerkungs-Pfad automatisch mergen, z.B. G3<3 -> G3+G4.)"""
+    units = [[g] for g in groups]
+    def cnt(u): return sum(present.get(g, 0) for g in u)
+    def crosses(a, b): return a[-1] == "G2" and b[0] == "G3"
+    changed = True
+    while changed:
+        changed = False
+        for i, u in enumerate(units):
+            if cnt(u) < min_kids and len(units) > 1:
+                cands = []
+                if i > 0: cands.append(i - 1)
+                if i < len(units) - 1: cands.append(i + 1)
+                best = None
+                for j in cands:
+                    a, b = (units[j], units[i]) if j < i else (units[i], units[j])
+                    sc = cnt(units[j]) + cnt(u) + (1000 if crosses(a, b) else 0)
+                    if best is None or sc < best[0]:
+                        best = (sc, j)
+                if best:
+                    j = best[1]; lo, hi = sorted((i, j))
+                    units[lo] = units[lo] + units[hi]; del units[hi]
+                    changed = True; break
+    return units
+
+
 def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
     """Isolierter Builder aus KI-Anweisungen (cancel/merges/assign) -> vollstaendiges Raster.
     Entfallene Gruppen -> kein eigener Trainer (Trainer wird Springer)."""
@@ -1380,9 +1408,16 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
     units = []
     for grps, tr in merge_units:
         units.append(("+".join(sorted(grps, key=lambda x: int(x[1]))), tr))
-    for g in base_groups:
-        if g not in used_groups:
-            units.append((g, None)); used_groups.add(g)
+    # Uebrig gebliebene Einzelgruppen: zu kleine Gruppen (<3 anwesende Kinder) automatisch
+    # mit bestem Nachbarn zusammenlegen (wie im Standard-Pfad build_trainer_plan).
+    present = {g: max(0, len(ALLE_TURNER.get(g, [])) - len(absences.get(g, [])))
+               for g in ("G1", "G2", "G3", "G4")}
+    leftover = [g for g in base_groups if g not in used_groups]
+    for grp_list in _merge_small_singletons(leftover, present):
+        lbl = "+".join(sorted(grp_list, key=lambda x: int(x[1])))
+        units.append((lbl, None))
+        for g in grp_list:
+            used_groups.add(g)
 
     assign = dict(forced)
     pool = [t for t in available if t not in assign]
@@ -1446,6 +1481,25 @@ def _ki_kid(name):
         if disp in lst:
             return g, disp
     return None
+
+def _merge_ki_assign(existing, new):
+    """Fuegt neue Zuteilungen zu bestehenden hinzu, statt sie zu ueberschreiben.
+    Spaetere Eintraege fuer denselben Trainer gewinnen; andere Trainer bleiben erhalten.
+    (Noah 16.07.2026: sonst warf eine zweite Anmerkung die erste raus, z.B. 'Noah Springer'.)"""
+    by = {}
+    order = []
+    for a in list(existing or []) + list(new or []):
+        if not isinstance(a, dict):
+            continue
+        tr = (a.get("trainer") or "").strip()
+        gr = a.get("gruppe") or a.get("label")
+        if not tr or not gr:
+            continue
+        if tr not in by:
+            order.append(tr)
+        by[tr] = gr
+    return [{"trainer": t, "gruppe": by[t]} for t in order]
+
 
 def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
     """Analysiert jede ungelesene Anmerkung per KI und schreibt die Aenderung in
@@ -1515,7 +1569,7 @@ def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
                     uh = tm.get("uhrzeit")
                     note_lines.append(f"{tm.get('trainer','')} {ri}" + (f" {uh}" if uh else ""))
             if res.get("zuteilung"):
-                ki["assign"] = res["zuteilung"]
+                ki["assign"] = _merge_ki_assign(ki.get("assign"), res["zuteilung"])
                 for z in res["zuteilung"]:
                     if z.get("trainer") and z.get("gruppe"):
                         note_lines.append(f"{z['trainer']}: {z['gruppe']}")
@@ -1554,12 +1608,14 @@ def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
                     if d in ALLE_TRAINER and lab:
                         val.append({"trainer": d, "gruppe": str(lab)})
                 if val:
-                    ki["assign"] = val
+                    ki["assign"] = _merge_ki_assign(ki.get("assign"), val)
+            # Umgesetzte Anweisungen werden NICHT als Anmerkungs-Text in den Plan geschrieben
+            # (Noah 16.07.2026). Nur echter Hinweistext ("In die Anmerkungen schreiben: ...")
+            # landet als Notiz; note_lines dienen nur noch dem Log unten.
             base_note = (res.get("notiz") or "").strip()
-            allnotes = [x for x in (([base_note] if base_note else []) + note_lines) if x]
-            if allnotes:
+            if base_note:
                 prev = (fe.get("notiz") or "").strip()
-                fe["notiz"] = (prev + "\n" if prev else "") + "\n".join(allnotes)
+                fe["notiz"] = (prev + "\n" if prev else "") + base_note
             if a.get("id"):
                 processed_ids.append(a["id"])
             if a in anmerkungen_server:
