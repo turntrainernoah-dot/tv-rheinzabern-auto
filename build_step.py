@@ -534,11 +534,12 @@ def _fill_typmix(pool, n):
     return result
 
 
-def select_exercises_pair(alle, verlauf):
+def select_exercises_pair(alle, verlauf, exclude_nrs=None):
     """
     Select exercises for Leicht AND Schwer together.
     Leicht: SW 1-5 priority (ascending). Schwer: SW 5-9 priority (descending).
     Max MAX_OVERLAP exercises shared between the two videos.
+    exclude_nrs: Uebungen der Vorwoche, die hart ausgeschlossen werden.
     """
     lu = verlauf.get('letzte_verwendung', {})
     alle = _drop_inkompatibel(alle, lu)
@@ -552,13 +553,23 @@ def select_exercises_pair(alle, verlauf):
         if total >= TARGET_SEC - OVERHEAD:
             break
 
-    leicht_pool = [u for u in alle if 'leicht' in assign_videos(u['schwierigkeit'])]
-    schwer_pool  = [u for u in alle if 'schwer' in assign_videos(u['schwierigkeit'])]
-
-    # Sort: Leicht = low SW first, then LRU
-    leicht_pool.sort(key=lambda u: (lu.get(u['nr'], '2000-01-01'), u['schwierigkeit']))
-    # Sort: Schwer = high SW first, then LRU
-    schwer_pool.sort(key=lambda u: (lu.get(u['nr'], '2000-01-01'), -u['schwierigkeit']))
+    # Harte Wiederholungssperre: Uebungen der Vorwoche zuerst komplett rausnehmen.
+    # Ausgeschlossene kommen nur als Notreserve ans Ende (falls der Pool sonst < n waere),
+    # damit ein Video immer voll wird, aber Wiederholungen nach Moeglichkeit vermeidet.
+    _excl = set(str(x) for x in (exclude_nrs or set()))
+    def _mkpool(video, key):
+        elig = [u for u in alle if video in assign_videos(u['schwierigkeit'])]
+        prim = sorted((u for u in elig if str(u['nr']) not in _excl), key=key)
+        back = sorted((u for u in elig if str(u['nr']) in _excl), key=key)
+        # Notreserve NUR anhaengen, wenn der gesperrte Pool sonst nicht voll wird.
+        # Solange prim >= n gibt es keine einzige Wiederholung aus der Vorwoche.
+        if len(prim) < n:
+            prim = prim + back[:(n - len(prim))]
+        return prim
+    # PRIMARY = LRU (am laengsten nicht genutzt zuerst), SECONDARY = Schwierigkeit
+    # (Leicht bevorzugt niedrige SW, Schwer hohe SW).
+    leicht_pool = _mkpool('leicht', lambda u: (lu.get(u['nr'], '2000-01-01'), u['schwierigkeit']))
+    schwer_pool = _mkpool('schwer', lambda u: (lu.get(u['nr'], '2000-01-01'), -u['schwierigkeit']))
 
     leicht_sel = _fill_typmix(leicht_pool, n)
     schwer_sel  = _fill_typmix(schwer_pool, n)
@@ -651,7 +662,14 @@ def init_state():
     sam_str = sam.strftime('%d.%m.%y')
     zeitraum = f"{sam.day}.{sam.month}. - {di.day}.{di.month}."
 
-    leicht_ueb, schwer_ueb = select_exercises_pair(alle, verlauf)
+    # Vorwoche (Samstag -7) bestimmen und deren Uebungen HART ausschliessen,
+    # damit keine Uebung in zwei aufeinanderfolgenden Wochen vorkommt.
+    prev_sam_str = (sam - timedelta(days=7)).strftime('%d.%m.%y')
+    _prev = [v for v in verlauf.get('videos', []) if v.get('samstag') == prev_sam_str]
+    exclude_nrs = set(str(x) for x in _prev[-1].get('uebungen', [])) if _prev else set()
+    print(f"  Vorwoche {prev_sam_str}: {len(exclude_nrs)} Uebungen gesperrt {sorted(exclude_nrs)}")
+
+    leicht_ueb, schwer_ueb = select_exercises_pair(alle, verlauf, exclude_nrs)
 
     # Wochen-Unterordner in Fertig\ (z.B. Fertig\ab 13.06.26\)
     week_dir = os.path.join(FERTIG, f"ab {sam_str}")
