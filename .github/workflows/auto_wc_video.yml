@@ -10,7 +10,12 @@ on:
     - cron: '25 20 * * 4'
     - cron: '0 21 * * 4'
     - cron: '30 21 * * 4'
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      target_sam:
+        description: "Ziel-Samstag dd.mm.yy (leer = automatisch)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -46,4 +51,5 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           WC_EVENT: ${{ github.event_name }}
+          WC_TARGET_SAM: ${{ github.event.inputs.target_sam }}
         run: python auto_wc_video.py
