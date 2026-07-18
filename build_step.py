@@ -146,9 +146,13 @@ def beep_expr(win_dur):
 
 def assign_videos(sw):
     sw = int(sw)
-    if sw <= 2:   return ['leicht']
-    elif sw <= 7: return ['leicht', 'schwer']
-    else:          return ['schwer']
+    # Leicht: SW 1-6 (nie ueber 6). Schwer: SW 4-9 (nie unter 4). Overlap 4-6.
+    v = []
+    if sw <= 6:
+        v.append('leicht')
+    if sw >= 4:
+        v.append('schwer')
+    return v
 
 def run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
