@@ -639,9 +639,14 @@ def save_verlauf(verlauf, used_nrs, results, sam_str, zeitraum):
 def init_state():
     alle    = scan_upload()
     verlauf = load_verlauf()
-    _days = (5 - date.today().weekday()) % 7
-    if _days == 0: _days = 7  # Heute ist Samstag -> naechste Woche
-    sam     = date.today() + timedelta(days=_days)
+    _force = os.environ.get("WC_TARGET_SAM", "").strip()
+    if _force:
+        from datetime import datetime as _dt
+        sam = _dt.strptime(_force, "%d.%m.%y").date()
+    else:
+        _days = (5 - date.today().weekday()) % 7
+        if _days == 0: _days = 7  # Heute ist Samstag -> naechste Woche
+        sam = date.today() + timedelta(days=_days)
     di      = sam + timedelta(days=3)
     sam_str = sam.strftime('%d.%m.%y')
     zeitraum = f"{sam.day}.{sam.month}. - {di.day}.{di.month}."
