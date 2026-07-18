@@ -552,9 +552,9 @@ def select_exercises_pair(alle, verlauf):
     schwer_pool  = [u for u in alle if 'schwer' in assign_videos(u['schwierigkeit'])]
 
     # Sort: Leicht = low SW first, then LRU
-    leicht_pool.sort(key=lambda u: (u['schwierigkeit'], lu.get(u['nr'], '2000-01-01')))
+    leicht_pool.sort(key=lambda u: (lu.get(u['nr'], '2000-01-01'), u['schwierigkeit']))
     # Sort: Schwer = high SW first, then LRU
-    schwer_pool.sort(key=lambda u: (-u['schwierigkeit'], lu.get(u['nr'], '2000-01-01')))
+    schwer_pool.sort(key=lambda u: (lu.get(u['nr'], '2000-01-01'), -u['schwierigkeit']))
 
     leicht_sel = _fill_typmix(leicht_pool, n)
     schwer_sel  = _fill_typmix(schwer_pool, n)
