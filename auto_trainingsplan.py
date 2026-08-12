@@ -743,6 +743,40 @@ def _build_lowstaff_plan(available, abwesend):
 
 
 
+# ════════════════════════════════════════════════════════════════
+#  GERAETE-FARBEN: EINZIGE Quelle fuer beide Trainer-Plan-Builder
+#  (Standard-Pfad build_trainer_plan + KI-Pfad build_ki_einteilung).
+#  Bugfix 12.08.2026 (Noah): vorher hatte jeder Builder seine eigene Kopie
+#  dieser Zuordnung, und im g1_starts_geraet2=True-Zweig kollidierten G2 und
+#  G3 auf "g1_blau" (dieselbe Station gleichzeitig doppelt belegt), waehrend
+#  G2 dadurch zweimal dasselbe Geraet turnte statt beide Geraete zu durchlaufen.
+#  Jetzt zentral hier definiert, damit ein Fix nicht mehr an zwei Stellen
+#  gepflegt werden muss und nicht wieder auseinanderlaufen kann.
+# ════════════════════════════════════════════════════════════════
+
+def geraet_farbe(gruppe, phase, g1_starts_geraet2):
+    """Farbe/Station fuer G1/G2/G3 je Phase (1 = Slots 2+3, 2 = Slot 4).
+    Regel (siehe Vault [[Gruppen, Zeiten und Geräte-Rotation]]): G1+G2 turnen
+    IMMER denselben Geraetetyp gleichzeitig (auf den zwei verschiedenen Farben
+    dieses Geraets), G3 IMMER den jeweils anderen Typ. Dadurch ist innerhalb
+    einer Phase jede Farbe nur genau einer Gruppe zugeteilt, und jede Gruppe
+    durchlaeuft ueber beide Phasen beide Geraete (nie zweimal dasselbe)."""
+    if g1_starts_geraet2:
+        m = ({"G1": "g2_orange", "G2": "g2_lila",  "G3": "g1_blau"}   if phase == 1
+             else {"G1": "g1_blau",  "G2": "g1_gruen", "G3": "g2_orange"})
+    else:
+        m = ({"G1": "g1_blau",  "G2": "g1_gruen", "G3": "g2_orange"} if phase == 1
+             else {"G1": "g2_orange", "G2": "g2_lila",  "G3": "g1_blau"})
+    return m.get(gruppe, "aufbauen")
+
+def geraet_farbe_g4(g1_starts_geraet2):
+    """G4-Farben fuer Slot 4 (18:15-19:00) und Slot 5 (19:00-19:30) -- immer
+    die Farbe, die von G1/G2/G3 in dem Moment gerade frei ist (G4 turnt laut
+    Regel 'das gerade freie Geraet'). Muss wie geraet_farbe() vom
+    g1_starts_geraet2-Flag abhaengen, sonst kollidiert G4 in Slot 4 mit G2,
+    sobald G1+G2 in Phase 2 beide Faerbungen von Geraet 1 belegen."""
+    return ("g2_lila", "g1_gruen") if g1_starts_geraet2 else ("g1_gruen", "g2_orange")
+
 def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_timing=None):
     abwesend  = absences.get("Trainer", [])
     available = [t for t in ALLE_TRAINER if t not in abwesend]
@@ -857,14 +891,8 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
 
     # ---- Farben / Templates ----
     def farbe(gruppe, phase):
-        if g1_starts_geraet2:
-            m = ({"G1":"g2_orange","G2":"g1_blau","G3":"g1_blau"} if phase==1
-                 else {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"})
-        else:
-            m = ({"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"} if phase==1
-                 else {"G1":"g2_orange","G2":"g2_lila","G3":"g1_blau"})
-        return m.get(gruppe, "aufbauen")
-    G4_SLOT3, G4_SLOT4 = "g1_gruen", "g2_orange"
+        return geraet_farbe(gruppe, phase, g1_starts_geraet2)
+    G4_SLOT3, G4_SLOT4 = geraet_farbe_g4(g1_starts_geraet2)
     PALETTE = ["g1_blau", "g2_orange", "g1_gruen", "g2_lila"]
 
     def label_of(u):
@@ -1449,20 +1477,15 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
 
     # Zellen mit korrekter Geraete-Rotation (Phasen-Farben wie Standard-Builder)
     def _farbe(g, phase):
-        if g1_starts_geraet2:
-            m = ({"G1":"g2_orange","G2":"g1_blau","G3":"g1_blau"} if phase==1
-                 else {"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"})
-        else:
-            m = ({"G1":"g1_blau","G2":"g1_gruen","G3":"g2_orange"} if phase==1
-                 else {"G1":"g2_orange","G2":"g2_lila","G3":"g1_blau"})
-        return m.get(g, "aufbauen")
+        return geraet_farbe(g, phase, g1_starts_geraet2)
     _PAL = ["g1_blau", "g2_orange", "g1_gruen", "g2_lila"]
     def _cells(label, pidx):
         lab = str(label).strip()
         if lab.lower() == "springer":
             return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
         if lab == "G4":
-            return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4","g1_gruen"),("G4","g2_orange")]
+            _g4s3, _g4s4 = geraet_farbe_g4(g1_starts_geraet2)
+            return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",_g4s3),("G4",_g4s4)]
         if "+" not in lab and lab in ("G1","G2","G3"):
             return [("AW "+lab,"aufwaermen"),(lab,_farbe(lab,1)),(lab,_farbe(lab,1)),(lab,_farbe(lab,2)),("Abbauen","aufbauen")]
         c1, c2 = ("g1_blau", "g2_orange") if (pidx % 2 == 0) else ("g2_orange", "g1_blau")
