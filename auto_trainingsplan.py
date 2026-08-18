@@ -82,6 +82,28 @@ FARBEN = {
     "legende_bg":     "2C3E50",
 }
 
+# ────────────────────────────────────────────────────────────────
+#  STRUKTUR-TOGGLE: G3+G4 Dauer-Zusammenlegung (Noah, 18.08.2026)
+# ────────────────────────────────────────────────────────────────
+# G3 und G4 trainieren ab sofort IMMER zusammen als eine feste Einheit
+# "G3+G4" (17:00-19:00 Uhr statt G4 vorher separat 17:30-19:30 Uhr), mit
+# nur noch 1 Trainer statt vorher 2 (plus ganz normal Springer als Backup,
+# wenn genug Trainer da sind - unveraendert wie bei jeder anderen Gruppe).
+# Turner-Listen/Anwesenheit/Wochenchallenge bleiben pro G3 und G4 GETRENNT -
+# nur Trainingszeit + Trainer-Einteilung werden zusammengelegt.
+#
+# Technisch nutzt dies exakt den Zusammenlegungs-Pfad (tpl_merged), der
+# vorher schon situativ bei Trainer-Engpass/kleinen Gruppen lief - jetzt als
+# feste Basis-Einheit statt als Ausnahme. Siehe build_trainer_plan() und
+# build_ki_einteilung().
+#
+# REVERT ("mach alles wie zuvor, trenne G3+G4 auf"): einfach auf False
+# setzen. Stellt die exakte Alt-Logik wieder her (G4 wieder eigenstaendig
+# 17:30-19:30 mit eigenem Trainer; G3+G4-Zusammenlegung wieder nur situativ
+# bei Engpass/kleinen Gruppen, wie vor dem 18.08.2026).
+# Siehe Vault-Notiz [[G3+G4 Dauer-Zusammenlegung]] fuer Details.
+G3_G4_PERMANENT_MERGE = True
+
 # ════════════════════════════════════════════════════════════════
 #  UMGEBUNGSVARIABLEN (GitHub Secrets)
 # ════════════════════════════════════════════════════════════════
@@ -807,7 +829,17 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
     MIN_KIDS = 3   # jede Gruppe braucht >= 3 anwesende Turner, sonst zusammenlegen
 
     # ---- Einheiten bilden ----
-    units = [[g] for g in active]
+    if G3_G4_PERMANENT_MERGE:
+        # G3+G4 sind eine feste Basis-Einheit (siehe Toggle oben) statt zwei
+        # separater Einzel-Einheiten. Alle nachfolgenden Schritte (Mindest-
+        # groesse, Trainerzahl-Reduktion, Julian-Springer) arbeiten unveraendert
+        # auf dieser Einheit weiter - identisch zum bisherigen tpl_merged-Pfad.
+        units = []
+        if present["G1"] >= 1: units.append(["G1"])
+        if present["G2"] >= 1: units.append(["G2"])
+        if present["G3"] >= 1 or present["G4"] >= 1: units.append(["G3", "G4"])
+    else:
+        units = [[g] for g in active]
     def ucount(u): return sum(present[g] for g in u)
     def crosses(a, b): return a[-1] == "G2" and b[0] == "G3"   # G2|G3-Grenze = last resort
     def _merge_at(i, j):
@@ -855,8 +887,10 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
         if bm is not None and (ucount(units[bm[1]]) + ucount(units[bm[1]+1])) <= 8:
             _merge_at(bm[1], bm[1]+1)
 
-    # G4-Zeit-Hinweis, wenn G4 in einer Zusammenlegung ist
-    if any(len(u) >= 2 and "G4" in u for u in units):
+    # G4-Zeit-Hinweis, wenn G4 in einer Zusammenlegung ist (nur bei situativer
+    # Zusammenlegung relevant - bei der permanenten G3+G4-Einheit ist das der
+    # neue Normalfall und braucht keinen Extra-Hinweis mehr).
+    if not G3_G4_PERMANENT_MERGE and any(len(u) >= 2 and "G4" in u for u in units):
         anmerkungen.append("Gruppe 4 hat zwischen 17:00-19:00 Training")
 
     # ---- Trainer den Einheiten zuordnen: nur Vollzeit-Halter bekommen Gruppen ----
@@ -1421,6 +1455,21 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
         grps = set(g for g in (mg or []) if g in base_groups) - used_groups
         if len(grps) >= 2:
             merge_units.append((grps, None)); used_groups |= grps
+
+    # G3+G4-Dauer-Zusammenlegung (siehe Toggle G3_G4_PERMANENT_MERGE oben):
+    # gilt auch im KI-/Anmerkungs-Pfad als Standard, AUSSER eine Anmerkung
+    # nennt G3 oder G4 explizit einzeln (z.B. "Fabian macht G3 alleine" oder
+    # ein cancel/merge, das G3/G4 schon anders verplant hat).
+    if G3_G4_PERMANENT_MERGE and {"G3", "G4"} <= set(base_groups) and not ({"G3", "G4"} & used_groups):
+        explicit_single = {
+            (a.get("gruppe") or a.get("label") or "").strip()
+            for a in assign_raw
+            if _ki_full_name(a.get("trainer", "")) in available
+            and "+" not in (a.get("gruppe") or a.get("label") or "")
+        }
+        if "G3" not in explicit_single and "G4" not in explicit_single:
+            merge_units.append(({"G3", "G4"}, None))
+            used_groups |= {"G3", "G4"}
 
     forced = {}
     for a in assign_raw:
