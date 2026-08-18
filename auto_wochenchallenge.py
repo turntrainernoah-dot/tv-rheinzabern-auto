@@ -136,10 +136,6 @@ NAME_MAP = {
     "mika w.":       ("G4", "Mika W."),
     "mika w":        ("G4", "Mika W."),
     "mika werling":  ("G4", "Mika W."),
-    # Jamie G.
-    "jamie":         ("G4", "Jamie G."),
-    "jamie g.":      ("G4", "Jamie G."),
-    "jamie g":       ("G4", "Jamie G."),
 }
 
 # Mehrdeutige Namen (brauchen Gruppenangabe)
@@ -150,7 +146,7 @@ WC_GRUPPEN_TEMPLATE = {
     "G1": ["Felix E.", "Finn M.", "Sinan Y.", "Ilyas E.", "Jonathan S.", "Hannes G.", "Ben B."],
     "G2": ["Henry K.", "Matti G.", "Levent K.", "Caius C."],
     "G3": ["Erik E.", "Artem T.", "Finn T.", "Ben F.", "Michael K."],
-    "G4": ["Felix L.", "Anton K.", "Mika W.", "Jamie G."],
+    "G4": ["Felix L.", "Anton K.", "Mika W."],
 }
 
 # Initiale Vorpunkte (Stand nach Woche 06.06–09.06.2026, neues Name-Format)
@@ -159,7 +155,7 @@ DEFAULT_VORPUNKTE = {
     "G1_Ilyas E.": 8,    "G1_Jonathan S.": 7, "G1_Hannes G.": 5, "G1_Ben B.": 4,
     "G2_Henry K.": 8,    "G2_Matti G.": 8,   "G2_Levent K.": 8,  "G2_Caius C.": 8,
     "G3_Erik E.": 3,     "G3_Artem T.": 2,   "G3_Finn T.": 4,    "G3_Ben F.": 2, "G3_Michael K.": 3,
-    "G4_Felix L.": 3,    "G4_Anton K.": 3,   "G4_Mika W.": 21,   "G4_Jamie G.": 0,
+    "G4_Felix L.": 3,    "G4_Anton K.": 3,   "G4_Mika W.": 21,
 }
 
 # Wochentag-Mapping (Deutsch → Python weekday, Mo=0 … So=6)
@@ -195,7 +191,7 @@ OLD_KEY_MAP = {
     "G2_Levent":  "G2_Levent K.",   "G2_Caius":    "G2_Caius C.",   "G3_Erik":    "G3_Erik E.",
     "G3_Artem":   "G3_Artem T.",    "G3_Finn":     "G3_Finn T.",    "G3_Ben G3":  "G3_Ben F.",
     "G3_Michael": "G3_Michael K.",  "G4_Felix":    "G4_Felix L.",   "G4_Anton":   "G4_Anton K.",
-    "G4_Mika":    "G4_Mika W.",     "G4_Jamie":    "G4_Jamie G.",
+    "G4_Mika":    "G4_Mika W.",
 }
 
 def migrate_vorpunkte_keys(alle_vorpunkte):

@@ -28,7 +28,7 @@ ALLE_TURNER = {
     "G1": ["Felix E.", "Finn M.", "Sinan Y.", "Ilyas E.", "Jonathan S.", "Hannes G.", "Ben B."],
     "G2": ["Henry K.", "Matti G.", "Levent K.", "Caius C."],
     "G3": ["Erik E.", "Artem T.", "Finn T.", "Ben F.", "Michael K."],
-    "G4": ["Felix L.", "Anton K.", "Mika W.", "Jamie G."],
+    "G4": ["Felix L.", "Anton K.", "Mika W."],
 }
 ALLE_TRAINER = ["Noah W.", "Andy K.", "Fabian G.", "Cassian P.", "Julian K.", "Torben W."]
 
@@ -44,7 +44,7 @@ WEBSITE_TO_DISPLAY = {
     "Erik": "Erik E.", "Artem": "Artem T.", "Finn G3": "Finn T.",
     "Ben G3": "Ben F.", "Michael": "Michael K.",
     # G4
-    "Felix G4": "Felix L.", "Anton": "Anton K.", "Mika": "Mika W.", "Jamie": "Jamie G.",
+    "Felix G4": "Felix L.", "Anton": "Anton K.", "Mika": "Mika W.",
     # Trainer
     "Noah": "Noah W.", "Andy": "Andy K.", "Fabian": "Fabian G.",
     "Cassian": "Cassian P.", "Julian": "Julian K.", "Torben": "Torben W.",

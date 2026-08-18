@@ -56,7 +56,6 @@ GRUPPEN = {
         "Felix": [],
         "Mika":  [0, 2, 3],
         "Anton": [],
-        "Jamie": [],
     },
 }
 
@@ -66,7 +65,7 @@ VORHERIGE_PUNKTE = {
     "G1_Ilyas": 4, "G1_Jonathan": 4, "G1_Hannes": 3, "G1_Ben G1": 0,
     "G2_Henry": 4, "G2_Matti": 4, "G2_Levent": 4, "G2_Caius": 4,
     "G3_Artem": 0, "G3_Finn": 0, "G3_Ben G3": 1, "G3_Erik": 0, "G3_Michael": 0,
-    "G4_Felix": 3, "G4_Mika": 18, "G4_Anton": 3, "G4_Jamie": 0,
+    "G4_Felix": 3, "G4_Mika": 18, "G4_Anton": 3,
 }
 
 # ===================================================================
@@ -107,7 +106,7 @@ def _load_abwesend():
         "Hannes":       "Hannes G.",  "Henry":       "Henry K.",   "Matti":       "Matti G.",
         "Levent":       "Levent K.",  "Caius":       "Caius C.",   "Erik":        "Erik E.",
         "Artem":        "Artem T.",   "Michael":     "Michael K.", "Anton":       "Anton K.",
-        "Mika":         "Mika W.",    "Jamie":       "Jamie G.",
+        "Mika":         "Mika W.",
         "Felix (G1)":   "Felix E.",   "Finn (G1)":   "Finn M.",    "Ben (G1)":    "Ben B.",
         "Ben G1":       "Ben B.",     "Felix G1":    "Felix E.",   "Finn G1":     "Finn M.",
         "Finn (G3)":    "Finn T.",    "Ben (G3)":    "Ben F.",     "Finn G3":     "Finn T.",
