@@ -799,11 +799,83 @@ def geraet_farbe_g4(g1_starts_geraet2):
     sobald G1+G2 in Phase 2 beide Faerbungen von Geraet 1 belegen."""
     return ("g2_lila", "g1_gruen") if g1_starts_geraet2 else ("g1_gruen", "g2_orange")
 
-def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_timing=None):
+def _merged_ref_group(groups):
+    """Referenz-Gruppe fuer die Farbwahl einer zusammengelegten Einheit (z.B.
+    ["G3","G4"] fuer die G3+G4-Dauer-Einheit oder ein situativer Engpass-Merge).
+    Bugfix 19.08.2026 (Noah, Regression nach G3+G4-Dauer-Zusammenlegung 18.08.2026):
+    vorher hatten tpl_merged() (Standard-Pfad) und _cells() (KI-/Anmerkungs-Pfad)
+    JEWEILS eine eigene, von g1_starts_geraet2 UNABHAENGIGE Hartverdrahtung
+    ("g1_blau"/"g2_orange" nach Einheiten-Index-Paritaet). Bei g1_starts_geraet2=False
+    ergab das fuer eine gerade Einheiten-Position exakt dieselben Farben wie G1 ->
+    zwei Gruppen gleichzeitig auf "Geraet 1 blau" (z.B. 19.08.2026: G1 und G3+G4
+    beide blau). Fix: die zusammengelegte Einheit uebernimmt die Farbreihe einer
+    ihrer Original-Gruppen aus der bereits kollisionsfreien geraet_farbe()-Tabelle
+    (G1/G2/G3 belegen dort garantiert unterschiedliche Farben je Phase) - dadurch
+    kann eine Einheit nie mit einer separat gebliebenen Einzelgruppe kollidieren,
+    da jede Gruppen-Identitaet immer nur in genau einer Einheit vorkommt."""
+    for g in ("G1", "G2", "G3"):
+        if g in groups:
+            return g
+    return "G3"   # Fallback (z.B. Einheit aus nur ["G4"] sollte hier nie ankommen)
+
+# ────────────────────────────────────────────────────────────────
+#  ROLLEN-ROTATION (Bug-Fix 19.08.2026, Noah)
+# ────────────────────────────────────────────────────────────────
+# Vorher: der Backup-Pool (Fabian/Cassian/Torben) wurde immer in fester
+# ALLE_TRAINER-Reihenfolge iteriert - dadurch war Torben (letzter Eintrag)
+# quasi Dauer-Springer, sobald Julian ausfiel und einer aus dem Pool eine
+# Gruppe uebernehmen musste, kam immer nur Fabian dran. Jetzt: wer im
+# LETZTEN Plan Springer war, bekommt beim naechsten Mal Prioritaet
+# fuer eine Gruppe; wer eine Gruppe hatte, wird nach hinten sortiert.
+# Speicherung: plan_data[datum_kurz]["trainer_roles"] = {Trainer: "Springer"|"Gruppe"|None}
+
+def _extract_trainer_roles(trainer_plan):
+    """Ermittelt aus einem generierten trainer_plan-Dict die Rolle jedes
+    Trainers: 'Springer' | 'Gruppe' | None. 'Springer' = das Springer-Template
+    (nur Aufbauen/Springer/Abbauen). Alles andere mit Zellen = 'Gruppe'."""
+    roles = {}
+    for t in ALLE_TRAINER:
+        cells = (trainer_plan or {}).get(t)
+        if not cells:
+            roles[t] = None
+            continue
+        labs = {str(c[0] or "").strip().lower() for c in cells if isinstance(c, (list, tuple))}
+        if labs and labs <= {"aufbauen", "springer", "abbauen"}:
+            roles[t] = "Springer"
+        else:
+            roles[t] = "Gruppe"
+    return roles
+
+def _load_previous_trainer_roles(state, exclude_date=None):
+    """Sucht den JUENGSTEN plan_data-Eintrag (ausser exclude_date) mit
+    gespeicherten trainer_roles. Gibt {} zurueck, wenn nichts vorhanden ist
+    (z.B. erste Woche nach dem Rollout dieser Rotations-Logik)."""
+    pd = (state or {}).get("plan_data", {}) or {}
+    entries = []
+    for dk, d in pd.items():
+        if exclude_date and dk == exclude_date:
+            continue
+        if not isinstance(d, dict):
+            continue
+        roles = d.get("trainer_roles")
+        if not roles:
+            continue
+        try:
+            entries.append((datetime.strptime(dk, "%d.%m.%y"), roles))
+        except Exception:
+            pass
+    if not entries:
+        return {}
+    entries.sort(key=lambda x: x[0])
+    return entries[-1][1] or {}
+
+
+def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_timing=None, prev_trainer_roles=None):
     abwesend  = absences.get("Trainer", [])
     available = [t for t in ALLE_TRAINER if t not in abwesend]
     n = len(available)
     trainer_timing = trainer_timing or {}
+    prev_trainer_roles = prev_trainer_roles or {}
 
     # anwesende Kinder je Gruppe
     present = {g: max(0, len(ALLE_TURNER[g]) - len(absences.get(g, []))) for g in ("G1","G2","G3","G4")}
@@ -904,6 +976,23 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
             if g in u: return idx
         return None
     noah = pop_first("Noah"); andy = pop_first("Andy"); julian = pop_first("Julian")
+
+    # ── Rollen-Rotation (Bug-Fix 19.08.2026, Noah) ─────────────────────────
+    # Sortiere den restlichen Pool (typischerweise Fabian/Cassian/Torben) so,
+    # dass Trainer, die im LETZTEN Plan Springer waren, ZUERST kommen (=hoehere
+    # Chance auf eine Gruppe). Trainer, die eine Gruppe hatten, wandern nach
+    # hinten (=hoehere Chance, jetzt Springer zu werden). Wenn kein vorheriger
+    # Plan mit Rollen bekannt ist, bleibt die urspruengliche Reihenfolge -
+    # kein Regressionsrisiko fuer bestehende Zuteilungen.
+    def _prev_role_key(t):
+        r = prev_trainer_roles.get(t)
+        if r == "Springer":
+            return 0     # vorher Springer -> jetzt Prio auf Gruppe
+        if r == "Gruppe":
+            return 2     # vorher Gruppe -> jetzt nach hinten (eher Springer)
+        return 1         # unbekannt/neu -> Mitte
+    pool.sort(key=lambda t: (_prev_role_key(t), ALLE_TRAINER.index(t) if t in ALLE_TRAINER else 99))
+
     order = [t for t in (noah, andy, julian) if t] + pool
     pref = {}
     if noah: pref[noah] = unit_with("G1")
@@ -927,7 +1016,6 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
     def farbe(gruppe, phase):
         return geraet_farbe(gruppe, phase, g1_starts_geraet2)
     G4_SLOT3, G4_SLOT4 = geraet_farbe_g4(g1_starts_geraet2)
-    PALETTE = ["g1_blau", "g2_orange", "g1_gruen", "g2_lila"]
 
     def label_of(u):
         return "Alle Gruppen" if len(u) == 4 else "+".join(u)
@@ -935,8 +1023,9 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
         return [("AW "+g,"aufwaermen"),(g,farbe(g,1)),(g,farbe(g,1)),(g,farbe(g,2)),("Abbauen","aufbauen")]
     def tpl_g4():
         return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",G4_SLOT3),("G4",G4_SLOT4)]
-    def tpl_merged(label, idx):
-        c1, c2 = ("g1_blau", "g2_orange") if (idx % 2 == 0) else ("g2_orange", "g1_blau")
+    def tpl_merged(label, groups):
+        ref = _merged_ref_group(groups)
+        c1, c2 = farbe(ref, 1), farbe(ref, 2)
         return [("AW "+label,"aufwaermen"),(label,c1),(label,c1),(label,c2),("Abbauen","aufbauen")]
     def tpl_springer():
         return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
@@ -953,7 +1042,7 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
         elif len(u) == 1:
             TRAINER_PLAN[t] = tpl_single(u[0])
         else:
-            TRAINER_PLAN[t] = tpl_merged(label_of(u), assigned[t])
+            TRAINER_PLAN[t] = tpl_merged(label_of(u), u)
 
     return TRAINER_PLAN, {}, anmerkungen
 
@@ -1226,21 +1315,59 @@ def apply_config_roster(sftp):
         print(f"[CONFIG] Fehler beim Aufbau ({e!r}) - nutze Hardcodierung.")
 
 
-def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, partial):
-    """Admin-Plan: manuell gesetzte Trainer-Zellen sind feste Vorgaben.
-    Manuell belegte Trainer werden aus der Auto-Verteilung herausgenommen, damit
-    ihre Gruppe (z.B. G4) automatisch von einem anderen Trainer uebernommen wird.
-    Leere Randzeiten (erste/letzte Zeile) werden mit Aufbauen/Abbauen gefuellt."""
+def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, partial, ki=None):
+    """Admin-Plan: manuell im Admin-Bereich gesetzte Trainer-Zellen (fixed_trainer_partial)
+    sind HARTE Vorgaben. Manuell belegte Trainer werden aus der Auto-Verteilung
+    herausgenommen. Der REST wird um diese Vorgabe herum geplant - und zwar inklusive
+    KI-/Kommando-Anweisungen (ki.assign/merges aus Anmerkungen), falls vorhanden, statt
+    sie stillschweigend zu verwerfen.
+    Bugfix 19.08.2026 (Noah: "im Admin-Bereich festgelegte Bereiche werden ignoriert,
+    die KI soll aussenrum planen"): vorher wurde bei vorhandenem fixed_trainer_partial
+    IMMER nur der reine Auto-Builder (build_trainer_plan, ohne KI) fuer den Rest benutzt
+    - jede KI-Zuteilung/Zusammenlegung aus einer gleichzeitigen Anmerkung ging verloren.
+    Jetzt: von Admin fest belegte Gruppen (aus dem Zellentext der committed Trainer
+    erkannt) werden fuer den Rest-Builder als 'voll abwesend' markiert, damit sie nicht
+    doppelt vergeben werden - und der Rest nutzt build_ki_einteilung, wenn ki.assign/
+    merges vorhanden sind. Leere Randzeiten (erste/letzte Zeile) werden mit
+    Aufbauen/Abbauen gefuellt."""
     partial = partial or {}
+    ki = ki or {}
     committed = [t for t, s in partial.items()
                  if isinstance(s, list) and any((c and len(c) >= 2 and (c[0] or c[1])) for c in s)]
     nulled = [t for t, s in partial.items() if s is None]
+
+    # Von den fest zugewiesenen Trainern belegte Gruppen ermitteln (aus dem
+    # Zellentext, z.B. "G3+G4" oder "G1"), damit der Rest-Builder sie nicht
+    # nochmal vergibt (sonst doppelte Gruppenbelegung moeglich).
+    covered_groups = set()
+    for t in committed:
+        labels = {str(c[0]).strip() for c in partial[t]
+                  if isinstance(c, (list, tuple)) and len(c) >= 2 and c[0]}
+        for lab in labels:
+            norm = _ki_norm_merge(lab) or (lab if lab in ("G1", "G2", "G3", "G4") else None)
+            if norm:
+                covered_groups.update(norm.split("+"))
+
     abs2 = {k: list(v) for k, v in absences.items()}
     abs2.setdefault("Trainer", [])
     for t in committed + nulled:
         if t not in abs2["Trainer"]:
             abs2["Trainer"].append(t)
-    base, _s, _a = build_trainer_plan(abs2, geraet_1, geraet_2, g1_starts_geraet2)
+    for g in covered_groups & {"G1", "G2", "G3", "G4"}:
+        existing = abs2.get(g, [])
+        for name in ALLE_TURNER.get(g, []):
+            if name not in existing:
+                existing.append(name)
+        abs2[g] = existing
+
+    if ki.get("assign") or ki.get("merges"):
+        try:
+            base, _s, _a = build_ki_einteilung(abs2, ki, geraet_1, geraet_2, g1_starts_geraet2)
+        except Exception as _e:
+            print(f"[ADMIN] KI-Einteilung um Admin-Fix herum fehlgeschlagen ({_e!r}), Fallback Standard-Builder.")
+            base, _s, _a = build_trainer_plan(abs2, geraet_1, geraet_2, g1_starts_geraet2)
+    else:
+        base, _s, _a = build_trainer_plan(abs2, geraet_1, geraet_2, g1_starts_geraet2)
     for t in committed:
         cells = partial[t]
         n = len(cells)
@@ -1527,8 +1654,7 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
     # Zellen mit korrekter Geraete-Rotation (Phasen-Farben wie Standard-Builder)
     def _farbe(g, phase):
         return geraet_farbe(g, phase, g1_starts_geraet2)
-    _PAL = ["g1_blau", "g2_orange", "g1_gruen", "g2_lila"]
-    def _cells(label, pidx):
+    def _cells(label):
         lab = str(label).strip()
         if lab.lower() == "springer":
             return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
@@ -1537,11 +1663,14 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
             return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",_g4s3),("G4",_g4s4)]
         if "+" not in lab and lab in ("G1","G2","G3"):
             return [("AW "+lab,"aufwaermen"),(lab,_farbe(lab,1)),(lab,_farbe(lab,1)),(lab,_farbe(lab,2)),("Abbauen","aufbauen")]
-        c1, c2 = ("g1_blau", "g2_orange") if (pidx % 2 == 0) else ("g2_orange", "g1_blau")
+        # Zusammengelegte Einheit (z.B. "G1+G2", "G3+G4"): Farbe von der Referenz-
+        # Gruppe uebernehmen statt von einem Listen-Index abhaengigen Hartcode
+        # (Bugfix 19.08.2026 - siehe _merged_ref_group()/Vault "Geräte-Farben-Kollision").
+        _parts = [p for p in re.split(r'[+/]', lab) if p in ("G1", "G2", "G3", "G4")]
+        _ref = _merged_ref_group(_parts) if _parts else "G3"
+        c1, c2 = _farbe(_ref, 1), _farbe(_ref, 2)
         return [("AW "+lab,"aufwaermen"),(lab,c1),(lab,c1),(lab,c2),("Abbauen","aufbauen")]
-    _labs = sorted(set(assign.values()))
-    _pidx = {l: i for i, l in enumerate(_labs)}
-    TRAINER_PLAN = {t: (_cells(assign[t], _pidx.get(assign[t], 0)) if t in assign else None) for t in ALLE_TRAINER}
+    TRAINER_PLAN = {t: (_cells(assign[t]) if t in assign else None) for t in ALLE_TRAINER}
     anm = []
     if open_units:
         anm.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(open_units))
@@ -1571,6 +1700,231 @@ def _merge_ki_assign(existing, new):
             order.append(tr)
         by[tr] = gr
     return [{"trainer": t, "gruppe": by[t]} for t in order]
+
+
+# ════════════════════════════════════════════════════════════════
+#  DETERMINISTISCHER ANMERKUNGS-KOMMANDO-PARSER (Bug-Fix 19.08.2026)
+# ════════════════════════════════════════════════════════════════
+# Trainer schreiben Kurz-Kommandos wie "Noah Springer" oder "lösche alle
+# Anmerkungen" in die Anmerkungs-Zeile - vorher landete das 1:1 als Text im
+# naechsten Plan (statt als Anweisung ausgefuehrt zu werden), weil die
+# KI-Interpretation entweder keinen GH_MODELS_TOKEN hatte oder scheiterte.
+# Dieser Parser erkennt eine feste Liste kanonischer Muster deterministisch
+# UND OHNE KI, wendet die Aktion direkt auf fixed_entries[Ziel-Datum] an und
+# konsumiert die Anmerkung (markiert sie als gelesen). Nur wenn ALLE Zeilen
+# einer Anmerkung sicher matchen, wird sie hier verarbeitet - sonst bleibt
+# sie der KI/dem Copy-Paste-Fallback ueberlassen.
+#
+# Erkannte Muster (case-insensitive, jeweils EINE Zeile):
+#   - "lösche/loesche/entferne (alle) (bisherigen) Anmerkungen"
+#     "alle Anmerkungen löschen" / "reset" / "zurücksetzen"
+#     -> reset: alle Vorgaben fuer das Ziel-Datum werden entfernt
+#   - "<Trainer-Vorname> Springer"       (z.B. "Noah Springer")
+#   - "<Trainer-Vorname> G1" / "G2" / "G3" / "G4"
+#   - "<Trainer-Vorname> G1+G2"          (auch "G3+G4", "Gruppe 1+2", ...)
+#   - "<Trainer-Vorname> abwesend/nicht da/fehlt"
+#   - "<Trainer-Vorname> anwesend/wieder da/kommt"
+#   - "GX entfaellt" / "Gruppe X entfaellt"
+#   - "GX und GY zusammenlegen" / "GX+GY zusammenlegen"
+#
+# Erweiterbar: neues Regex + Handler unten in COMMAND_PATTERNS ergaenzen.
+
+_TRAINER_FIRSTNAMES = ["Noah", "Andy", "Fabian", "Cassian", "Julian", "Torben"]
+
+def _first_to_full(first):
+    for full in ALLE_TRAINER:
+        if full.split()[0].lower() == first.lower():
+            return full
+    return None
+
+_RE_RESET = re.compile(
+    r'^\s*(?:'
+    r'(?:l(?:oe|ö)sch(?:e|t|en)?|entfern(?:e|t|en)?)\s+(?:alle\s+)?(?:bisherigen\s+)?anmerkungen'
+    r'|alle\s+anmerkungen\s+(?:l(?:oe|ö)schen|entfernen)'
+    r'|reset|zur(?:ue|ü)cksetzen|mach\s+alles\s+r(?:ue|ü)ckg(?:ae|ä)ngig'
+    r')\s*[.!]?\s*$',
+    re.IGNORECASE,
+)
+
+_RE_TRAINER_ROLE = re.compile(
+    r'^\s*(?P<name>' + '|'.join(_TRAINER_FIRSTNAMES) + r')'
+    r'\s+(?:macht\s+|ist\s+|:\s*)?'
+    r'(?P<lab>Springer|Gruppe\s*[1-4](?:\s*\+\s*(?:Gruppe\s*)?[1-4])?|G[1-4](?:\s*\+\s*G?[1-4])?)'
+    r'\s*[.!]?\s*$',
+    re.IGNORECASE,
+)
+
+_RE_TRAINER_ABSENT = re.compile(
+    r'^\s*(?P<name>' + '|'.join(_TRAINER_FIRSTNAMES) + r')'
+    r'\s+(?:ist\s+)?(?:abwesend|nicht\s+da|fehlt|kann\s+nicht|f(?:ae|ä)llt\s+aus)'
+    r'\s*[.!]?\s*$',
+    re.IGNORECASE,
+)
+
+_RE_TRAINER_PRESENT = re.compile(
+    r'^\s*(?P<name>' + '|'.join(_TRAINER_FIRSTNAMES) + r')'
+    r'\s+(?:ist\s+)?(?:anwesend|wieder\s+da|kommt(?:\s+doch)?|doch\s+da)'
+    r'\s*[.!]?\s*$',
+    re.IGNORECASE,
+)
+
+_RE_GRUPPE_ENTFALL = re.compile(
+    r'^\s*(?:Gruppe\s*)?G?(?P<g>[1-4])\s+(?:entf(?:ae|ä)llt|f(?:ae|ä)llt\s+aus)\s*[.!]?\s*$',
+    re.IGNORECASE,
+)
+
+_RE_MERGE = re.compile(
+    r'^\s*(?:Gruppe\s*)?G?(?P<a>[1-4])\s*(?:\+|und|u\.)\s*(?:Gruppe\s*)?G?(?P<b>[1-4])'
+    r'\s+(?:zusammenlegen|zusammen|gemeinsam)\s*[.!]?\s*$',
+    re.IGNORECASE,
+)
+
+def _norm_group_label(lab):
+    """'g1', 'Gruppe 1', 'G3+G4', 'gruppe 3+4', 'Springer' -> kanonisch."""
+    s = lab.strip()
+    if re.match(r'^\s*springer\s*$', s, re.IGNORECASE):
+        return "Springer"
+    parts = re.split(r'\s*\+\s*', s)
+    out = []
+    for p in parts:
+        m = re.match(r'^\s*(?:gruppe\s*)?g?\s*([1-4])\s*$', p, re.IGNORECASE)
+        if not m:
+            return None
+        out.append("G" + m.group(1))
+    if not out:
+        return None
+    if len(out) == 1:
+        return out[0]
+    return "+".join(sorted(out, key=lambda x: int(x[1])))
+
+def _parse_command_line(line):
+    """Versucht, EINE Anmerkungs-Zeile als bekanntes Kommando zu erkennen.
+    Gibt ein dict {typ, ...} zurueck oder None."""
+    s = (line or "").strip().rstrip(",;")
+    if not s:
+        return None
+    if _RE_RESET.match(s):
+        return {"typ": "reset"}
+    m = _RE_TRAINER_ROLE.match(s)
+    if m:
+        full = _first_to_full(m.group("name"))
+        lab = _norm_group_label(m.group("lab"))
+        if full and lab:
+            return {"typ": "assign", "trainer": full, "gruppe": lab}
+    m = _RE_TRAINER_ABSENT.match(s)
+    if m:
+        full = _first_to_full(m.group("name"))
+        if full:
+            return {"typ": "trainer_abwesend", "trainer": full}
+    m = _RE_TRAINER_PRESENT.match(s)
+    if m:
+        full = _first_to_full(m.group("name"))
+        if full:
+            return {"typ": "trainer_anwesend", "trainer": full}
+    m = _RE_GRUPPE_ENTFALL.match(s)
+    if m:
+        return {"typ": "gruppe_entfall", "gruppe": "G" + m.group("g")}
+    m = _RE_MERGE.match(s)
+    if m:
+        a, b = "G" + m.group("a"), "G" + m.group("b")
+        if a != b:
+            return {"typ": "merge", "gruppen": sorted([a, b], key=lambda x: int(x[1]))}
+    return None
+
+def _apply_command(cmd, fe):
+    """Wendet ein geparstes Kommando auf einen fixed_entries[dk]-Eintrag an.
+    fe wird in-place mutiert. Setzt manuell_bearbeitet=True damit der Admin-
+    Pfad im main() den Trainer-Plan aus diesen Vorgaben neu baut."""
+    typ = cmd.get("typ")
+    if typ == "reset":
+        # Alle Vorgaben fuer dieses Datum entfernen (analog KI reset: true)
+        fe.clear()
+        return
+    fe.setdefault("manuell_bearbeitet", True)
+    fe["quelle"] = fe.get("quelle") or "cmd"
+    ki = fe.setdefault("ki", {})
+    if typ == "assign":
+        existing = ki.get("assign") or []
+        existing = [x for x in existing if x.get("trainer") != cmd["trainer"]]
+        existing.append({"trainer": cmd["trainer"], "gruppe": cmd["gruppe"]})
+        ki["assign"] = existing
+    elif typ == "merge":
+        ex = [tuple(sorted(m, key=lambda x: int(x[1]))) for m in (ki.get("merges") or [])]
+        new = tuple(cmd["gruppen"])
+        if new not in ex:
+            ex.append(new)
+        ki["merges"] = [list(m) for m in ex]
+    elif typ == "gruppe_entfall":
+        ki["cancel"] = sorted(set((ki.get("cancel") or []) + [cmd["gruppe"]]))
+        fa = fe.setdefault("fixed_absences", {})
+        g = cmd["gruppe"]
+        fa.setdefault(g, [])
+        for t in ALLE_TURNER.get(g, []):
+            if t not in fa[g]:
+                fa[g].append(t)
+    elif typ == "trainer_abwesend":
+        fa = fe.setdefault("fixed_absences", {})
+        fa.setdefault("Trainer", [])
+        if cmd["trainer"] not in fa["Trainer"]:
+            fa["Trainer"].append(cmd["trainer"])
+    elif typ == "trainer_anwesend":
+        fa = fe.setdefault("fixed_absences", {})
+        if cmd["trainer"] in fa.get("Trainer", []):
+            fa["Trainer"].remove(cmd["trainer"])
+
+def preprocess_deterministic_annotations(sftp, anmerkungen_server, fixed_entries):
+    """Erkennt deterministisch parsbare Kommando-Anmerkungen, wendet sie auf
+    fixed_entries[naechstes_Datum] an und konsumiert sie (markiert gelesen).
+    Laeuft VOR ki_process_annotations - so klappt die Interpretation der
+    einfachen Faelle auch ohne GH_MODELS_TOKEN. Alles was nicht sauber matcht,
+    bleibt fuer die KI/den Copy-Paste-Pfad liegen."""
+    if not anmerkungen_server:
+        return
+    dk = active_training_date().strftime("%d.%m.%y")
+    changed = False
+    processed_ids = []
+    consumed = []
+    for a in list(anmerkungen_server):
+        notiz = (a.get("notiz") or "").strip()
+        if not notiz:
+            continue
+        lines = [ln for ln in notiz.splitlines() if ln.strip()]
+        if not lines:
+            continue
+        parsed = [_parse_command_line(ln) for ln in lines]
+        if any(p is None for p in parsed):
+            continue  # gemischt -> lieber der KI ueberlassen
+        # Alle Zeilen sind Kommandos -> anwenden
+        fe = fixed_entries.setdefault(dk, {})
+        for p in parsed:
+            _apply_command(p, fe)
+        # Nach reset() kann fe leer sein -> Eintrag komplett verwerfen
+        if not fe:
+            fixed_entries.pop(dk, None)
+        changed = True
+        consumed.append(a)
+        if a.get("id"):
+            processed_ids.append(a["id"])
+        writer = a.get("trainer", "?")
+        print(f"[CMD] '{notiz[:60]}' ({writer}) -> {dk}  {[p['typ'] for p in parsed]}")
+    for a in consumed:
+        try:
+            anmerkungen_server.remove(a)
+        except ValueError:
+            pass
+    if changed:
+        try:
+            f = sftp.open("fixed_entries.json", "wb")
+            f.write(json.dumps(fixed_entries, indent=2, ensure_ascii=False).encode("utf-8"))
+            f.close()
+            print("[CMD] fixed_entries.json aktualisiert.")
+        except Exception as e:
+            print(f"[CMD] fixed_entries Upload fehlgeschlagen: {e}")
+    if processed_ids:
+        try:
+            mark_anmerkungen_gelesen(sftp, processed_ids)
+        except Exception as e:
+            print(f"[CMD] mark gelesen fehlgeschlagen: {e}")
 
 
 def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
@@ -1741,6 +2095,14 @@ def main():
     # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
     new_hash = raw_abm_hash
 
+    # -- Deterministischer Kommando-Parser (Bug-Fix 19.08.2026): erkennt einfache
+    # Kurz-Kommandos wie "Noah Springer" oder "lösche alle Anmerkungen" OHNE KI
+    # und wendet sie direkt an. Was hier nicht matcht, bleibt fuer die KI. --
+    try:
+        preprocess_deterministic_annotations(sftp, anmerkungen_server, fixed_entries)
+    except Exception as _cmde:
+        print(f"[CMD] uebersprungen: {_cmde}")
+
     # -- Mini-KI: freie Trainer-Anmerkungen analysieren und in fixed_entries anwenden --
     try:
         ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state)
@@ -1827,14 +2189,20 @@ def main():
         _g2 = fixed_for_date.get("geraet_2") or _rg2
         _g1s = fixed_for_date.get("g1_starts_geraet2", _rg1s)
         _ki = fixed_for_date.get("ki") or {}
-        if (_ki.get("assign") or _ki.get("merges")) and not fixed_for_date.get("fixed_trainer_partial"):
+        _partial = fixed_for_date.get("fixed_trainer_partial") or {}
+        if _partial:
+            # Bugfix 19.08.2026 (Noah): Admin-Zellen sind eine harte Vorgabe, die KI/
+            # Kommando-Anweisungen (ki.assign/merges) planen - falls vorhanden - den
+            # Rest drumherum, statt komplett ignoriert zu werden (siehe build_admin_trainer_plan).
+            _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, _partial, ki=_ki)
+        elif _ki.get("assign") or _ki.get("merges"):
             try:
                 _base_tp, _sd, _ka = build_ki_einteilung(absences, _ki, _g1, _g2, _g1s)
             except Exception as _kierr:
                 print(f"[KI] Einteilung fehlgeschlagen, Fallback build_admin: {_kierr}")
-                _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, fixed_for_date.get("fixed_trainer_partial") or {})
+                _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, _partial, ki=_ki)
         else:
-            _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, fixed_for_date.get("fixed_trainer_partial") or {})
+            _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, _partial, ki=_ki)
         fixed_for_date["fixed_trainer_plan"] = _base_tp
         fixed_for_date["lock_trainer_plan"] = True
         lock_trainer = True
@@ -1946,8 +2314,10 @@ def main():
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (UPDATE).")
         else:
+            _prev_roles = _load_previous_trainer_roles(state, exclude_date=datum_kurz)
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing
+                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing,
+                prev_trainer_roles=_prev_roles,
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
@@ -2007,6 +2377,8 @@ def main():
         # da dieser Block jetzt auch bei Trainerwechsel laeuft)
         plan_data["absences_hash"]    = new_hash
         plan_data["trainer_absences"] = list(absences.get("Trainer", []))
+        # Trainer-Rollen fuer Rotation im naechsten Plan speichern (Bug-Fix 19.08.2026)
+        plan_data["trainer_roles"]    = _extract_trainer_roles(trainer_plan)
         if admin_fixed_hash:
             plan_data["fixed_hash"] = admin_fixed_hash
         plan_data["stored_absences"] = absences
@@ -2112,8 +2484,10 @@ def main():
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (NEW).")
         else:
+            _prev_roles = _load_previous_trainer_roles(state, exclude_date=datum_kurz)
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing
+                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing,
+                prev_trainer_roles=_prev_roles,
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
@@ -2168,6 +2542,7 @@ def main():
         state.setdefault("plan_data", {})[datum_kurz] = {
             "absences_hash":    new_hash,
             "trainer_absences": list(absences.get("Trainer", [])),
+            "trainer_roles":    _extract_trainer_roles(trainer_plan),  # fuer Rotation im naechsten Plan
             "stored_absences":  absences,
             "geraet_1":         geraet_1,
             "geraet_2":         geraet_2,
