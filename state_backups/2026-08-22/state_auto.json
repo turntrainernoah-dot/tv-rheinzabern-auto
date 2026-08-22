@@ -1,0 +1,433 @@
+{
+  "last_training_date": "26.08.2026",
+  "geraet_combo_index": 1,
+  "g1_starts_geraet2": false,
+  "generated_plans": [
+    "10.06.26",
+    "17.06.26",
+    "19.06.26",
+    "24.06.26",
+    "26.06.26",
+    "01.07.26",
+    "03.07.26",
+    "08.07.26",
+    "10.07.26",
+    "15.07.26",
+    "17.07.26",
+    "22.07.26",
+    "24.07.26",
+    "29.07.26",
+    "31.07.26",
+    "05.08.26",
+    "07.08.26",
+    "12.08.26",
+    "14.08.26",
+    "19.08.26",
+    "21.08.26",
+    "26.08.26"
+  ],
+  "plan_data": {
+    "17.06.26": {
+      "absences_hash": "456649a08b7c4eeae6628b652f6c909d",
+      "trainer_absences": [
+        "Fabian",
+        "Julian",
+        "Cassian"
+      ],
+      "stored_absences": {
+        "G1": [
+          "Felix G1"
+        ],
+        "G2": [],
+        "G3": [],
+        "G4": [],
+        "Trainer": [
+          "Fabian",
+          "Julian",
+          "Cassian"
+        ]
+      },
+      "geraet_1": "Sprung",
+      "geraet_2": "Reck",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [
+        "• Noah: Es könnte sein, dass ich paar Minuten später komme, da ich davor im Praktikum bin"
+      ]
+    },
+    "01.07.26": {
+      "absences_hash": "b34d349db9d8078eaf068b76884bd472",
+      "trainer_absences": [
+        "Noah W.",
+        "Cassian P."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Finn M.",
+          "Jonathan S."
+        ],
+        "G2": [
+          "Levent K."
+        ],
+        "G3": [
+          "Michael K.",
+          "Erik E.",
+          "Ben F."
+        ],
+        "G4": [
+          "Felix L.",
+          "Anton K.",
+          "Mika W.",
+          "Jamie G."
+        ],
+        "Trainer": [
+          "Noah W.",
+          "Cassian P."
+        ]
+      },
+      "geraet_1": "Seitpferd",
+      "geraet_2": "Ringe",
+      "g1_starts_geraet2": false,
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:15): 18:15 muss ich gehen",
+        "• Torben W. kommt später"
+      ],
+      "warnings_sent": [
+        "low_turner_G3_2",
+        "empty_G4"
+      ],
+      "fixed_hash": "a284df4b7670229e2bdbe861349c6d3b"
+    },
+    "03.07.26": {
+      "absences_hash": "f5ee96c2953d076da9a0237ed5dd04b4",
+      "trainer_absences": [
+        "Noah W.",
+        "Cassian P."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Jonathan S.",
+          "Ben B.",
+          "Ben B.",
+          "Ilyas E.",
+          "Finn M.",
+          "Ilyas E."
+        ],
+        "G2": [
+          "Matti G.",
+          "Levent K."
+        ],
+        "G3": [
+          "Michael K.",
+          "Erik E.",
+          "Ben F.",
+          "Ben F."
+        ],
+        "G4": [
+          "Felix L.",
+          "Anton K.",
+          "Mika W.",
+          "Jamie G."
+        ],
+        "Trainer": [
+          "Noah W.",
+          "Cassian P."
+        ]
+      },
+      "geraet_1": "Boden",
+      "geraet_2": "Barren",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:15): Um 18:15 muss ich gehen"
+      ],
+      "warnings_sent": [
+        "empty_G4",
+        "low_turner_G1_2",
+        "low_turner_G1_1",
+        "empty_G1",
+        "low_turner_G2_2",
+        "low_turner_G3_1"
+      ],
+      "fixed_hash": "dbc7cacb09bd562d4f246e2fc91c8c86"
+    },
+    "10.07.26": {
+      "absences_hash": "db699fa77210b7137f10c8ebf96c6e1b",
+      "trainer_absences": [
+        "Fabian G.",
+        "Julian K.",
+        "Andy K."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Jonathan S.",
+          "Hannes G."
+        ],
+        "G2": [
+          "Henry K.",
+          "Matti G.",
+          "Caius C."
+        ],
+        "G3": [
+          "Michael K.",
+          "Erik E.",
+          "Ben F."
+        ],
+        "G4": [
+          "Felix L.",
+          "Mika W.",
+          "Jamie G."
+        ],
+        "Trainer": [
+          "Fabian G.",
+          "Julian K.",
+          "Andy K."
+        ]
+      },
+      "geraet_1": "Sprung",
+      "geraet_2": "Reck",
+      "g1_starts_geraet2": false,
+      "late_notes_sent": [
+        "• Noah W. geht früher (17:15): Schaue nur kurz vorbei, bin nur bis 17:15 da 🙈"
+      ],
+      "warnings_sent": [
+        "low_turner_G3_2",
+        "low_turner_G2_1",
+        "low_turner_G4_1",
+        "low_trainer_3"
+      ],
+      "anm_notified_ids": [],
+      "fixed_hash": "91071f82344ffbfab80daeaa96b94ffa"
+    },
+    "15.07.26": {
+      "absences_hash": "fce4f21d48df2dc9260f47dddc5ed344",
+      "trainer_absences": [
+        "Cassian P.",
+        "Andy K."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Jonathan S."
+        ],
+        "G2": [
+          "Henry K.",
+          "Matti G."
+        ],
+        "G3": [
+          "Michael K.",
+          "Erik E.",
+          "Ben F."
+        ],
+        "G4": [],
+        "Trainer": [
+          "Cassian P.",
+          "Andy K."
+        ]
+      },
+      "geraet_1": "Seitpferd",
+      "geraet_2": "Ringe",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:00): Ich muss um 18 Uhr gehen"
+      ],
+      "warnings_sent": [
+        "low_turner_G2_2",
+        "low_turner_G3_2"
+      ],
+      "anm_notified_ids": [],
+      "fixed_hash": "360568a6515d4653bc02e41628e62d0e"
+    },
+    "17.07.26": {
+      "absences_hash": "bd8500ebb28b729daf8c4919c1e397cd",
+      "trainer_absences": [
+        "Cassian P.",
+        "Andy K."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Jonathan S.",
+          "Ilyas E."
+        ],
+        "G2": [
+          "Henry K.",
+          "Matti G."
+        ],
+        "G3": [
+          "Ben F.",
+          "Michael K.",
+          "Erik E."
+        ],
+        "G4": [],
+        "Trainer": [
+          "Cassian P.",
+          "Andy K."
+        ]
+      },
+      "geraet_1": "Boden",
+      "geraet_2": "Barren",
+      "g1_starts_geraet2": false,
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:00): Ich muss um 18 Uhr gehen"
+      ],
+      "warnings_sent": [
+        "low_turner_G2_2",
+        "low_turner_G3_2"
+      ],
+      "anm_notified_ids": [],
+      "fixed_hash": "6d7769648e2cf66e9b39d4eb59c204cd"
+    },
+    "12.08.26": {
+      "absences_hash": "dafab453fb8229ee1f8983802ec3112c",
+      "trainer_absences": [
+        "Andy K."
+      ],
+      "stored_absences": {
+        "G1": [
+          "Finn M."
+        ],
+        "G2": [],
+        "G3": [],
+        "G4": [
+          "Anton K.",
+          "Mika W.",
+          "Felix L.",
+          "Jamie G."
+        ],
+        "Trainer": [
+          "Andy K."
+        ]
+      },
+      "geraet_1": "Sprung",
+      "geraet_2": "Reck",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:15): Ich muss um 18:15 gehen"
+      ],
+      "warnings_sent": [
+        "empty_G4"
+      ],
+      "anm_notified_ids": [],
+      "fixed_hash": "cb3ac7a434549a1788848bc61fd96f9d"
+    },
+    "19.08.26": {
+      "absences_hash": "8488a13ccab84d4d470d7bca14833d2e",
+      "trainer_absences": [],
+      "stored_absences": {
+        "G1": [],
+        "G2": [],
+        "G3": [],
+        "G4": [],
+        "Trainer": []
+      },
+      "geraet_1": "Seitpferd",
+      "geraet_2": "Ringe",
+      "g1_starts_geraet2": false,
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:00): Gehe gegen 18 Uhr leider",
+        "• Cassian P. geht früher (18:00): Gehe gegen 18 Uhr leider"
+      ],
+      "warnings_sent": [],
+      "anm_notified_ids": [],
+      "fixed_hash": "5236e424414cf524df610e80499bd4fb"
+    },
+    "21.08.26": {
+      "absences_hash": "c4c03f0f00dfaf78df88dfa8df666806",
+      "trainer_absences": [
+        "Julian K.",
+        "Torben W.",
+        "Andy K."
+      ],
+      "trainer_roles": {
+        "Noah W.": "Gruppe",
+        "Andy K.": null,
+        "Fabian G.": "Gruppe",
+        "Cassian P.": "Gruppe",
+        "Julian K.": null,
+        "Torben W.": null
+      },
+      "stored_absences": {
+        "G1": [
+          "Felix E."
+        ],
+        "G2": [],
+        "G3": [
+          "Finn T."
+        ],
+        "G4": [],
+        "Trainer": [
+          "Julian K.",
+          "Torben W.",
+          "Andy K."
+        ]
+      },
+      "geraet_1": "Boden",
+      "geraet_2": "Barren",
+      "g1_starts_geraet2": true,
+      "late_notes_sent": [
+        "• Cassian P. geht früher (18:30): Muss leider 18:30 gehen"
+      ],
+      "warnings_sent": [
+        "low_trainer_3"
+      ],
+      "anm_notified_ids": [],
+      "fixed_hash": ""
+    },
+    "26.08.26": {
+      "absences_hash": "c4c03f0f00dfaf78df88dfa8df666806",
+      "trainer_absences": [],
+      "trainer_roles": {
+        "Noah W.": "Gruppe",
+        "Andy K.": "Gruppe",
+        "Fabian G.": "Gruppe",
+        "Cassian P.": "Springer",
+        "Julian K.": "Gruppe",
+        "Torben W.": "Springer"
+      },
+      "stored_absences": {
+        "G1": [
+          "Hannes G.",
+          "Ben B.",
+          "Felix E."
+        ],
+        "G2": [],
+        "G3": [],
+        "G4": [],
+        "Trainer": []
+      },
+      "geraet_1": "Sprung",
+      "geraet_2": "Reck",
+      "g1_starts_geraet2": false,
+      "late_notes_sent": [
+        "• Fabian G. geht früher (18:00): Gehe gegen 18 Uhr leider"
+      ],
+      "warnings_sent": [],
+      "anm_notified_ids": [],
+      "fixed_hash": ""
+    }
+  },
+  "protected_plans": [
+    "12.08.26"
+  ],
+  "entfall_published": [
+    "19.06.26",
+    "26.06.26",
+    "24.06.26",
+    "08.07.26",
+    "22.07.26",
+    "24.07.26",
+    "29.07.26",
+    "31.07.26",
+    "05.08.26",
+    "07.08.26",
+    "14.08.26"
+  ],
+  "entfall_notiz_hash": {
+    "24.06.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "08.07.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "22.07.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "24.07.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "29.07.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "31.07.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "05.08.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "07.08.26": "d41d8cd98f00b204e9800998ecf8427e",
+    "14.08.26": "d41d8cd98f00b204e9800998ecf8427e"
+  }
+}
