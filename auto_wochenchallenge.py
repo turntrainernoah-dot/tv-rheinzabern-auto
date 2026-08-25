@@ -503,7 +503,12 @@ def apply_config_roster(sftp):
         print(f"[CONFIG] config.json nicht ladbar ({e!r}).")
         return
     try:
-        gruppen = cfg.get("gruppen") or ["G1", "G2", "G3", "G4"]
+        # Seit dem Gruppenzeiten-Umbau (25.08.2026) ist "gruppen" ein Array
+        # von {"name":..,"zeiten":{...}} statt Strings (siehe
+        # auto_trainingsplan.py::apply_config_roster) -- hier reicht der
+        # Name, die Zeiten braucht nur der Trainingsplan-Generator.
+        gruppen_raw = cfg.get("gruppen") or ["G1", "G2", "G3", "G4"]
+        gruppen = [g["name"] if isinstance(g, dict) else g for g in gruppen_raw]
         tmpl = {g: [] for g in gruppen}
         for p in cfg.get("personen", []):
             if p.get("rolle") != "turner":

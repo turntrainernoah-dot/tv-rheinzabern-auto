@@ -19,6 +19,7 @@ from datetime import date, timedelta, datetime, timezone
 import paramiko
 import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment
+from openpyxl.utils import get_column_letter
 
 # ════════════════════════════════════════════════════════════════
 #  STATISCHE KONFIGURATION
@@ -33,12 +34,26 @@ from openpyxl.styles import PatternFill, Font, Alignment
 # gibt). Kann config/config.json nicht geladen werden, bricht main() klar ab
 # (REQUIRE_SERVER_ROSTER-Check), statt mit leerem Roster einen kaputten oder
 # veralteten Plan zu erzeugen.
-ALLE_TURNER = {"G1": [], "G2": [], "G3": [], "G4": []}
+ALLE_TURNER = {}
 ALLE_TRAINER = []
 
 # Mapping: Website-Format (nach normalize) → Anzeigename -- wird aus
 # config/config.json befuellt (apply_config_roster).
 WEBSITE_TO_DISPLAY = {}
+
+# Reihenfolge der konfigurierten Gruppen (z.B. ["G1","G2","G3"], 3-6 Gruppen
+# moeglich) -- wird aus config/config.json befuellt (apply_config_roster).
+GRUPPEN_ORDER = []
+
+# Pro Gruppe/Wochentag die drei Phasen-Zeitfenster (Minuten seit 0:00):
+# {gruppe: {"mi": {"aufwaermen":{"start":m,"ende":m}, "geraet1":{...}, "geraet2":{...}}, "fr": {...}}}
+# wird aus config/config.json befuellt (apply_config_roster).
+GRUPPEN_ZEITEN = {}
+
+# Trainer-Namen, die nur eingeteilt werden sollen, wenn es sonst nicht fuer
+# alle Gruppen reicht ("immer_springer" in config.json). Wird aus
+# config/config.json befuellt (apply_config_roster).
+IMMER_SPRINGER = set()
 
 GERAETE_ROTATION = [
     ("Boden", "Barren"),
@@ -46,19 +61,41 @@ GERAETE_ROTATION = [
     ("Seitpferd", "Ringe"),
 ]
 
-ZEITSLOTS = [
-    "17:00–17:30",
-    "17:30–18:00",
-    "18:00–18:15",
-    "18:15–19:00",
-    "19:00–19:30",
-]
+# Migrations-/Fallback-Zeiten (Stand vor dem Gruppenzeiten-Umbau, 25.08.2026):
+# G1/G2 Mi=Fr 17:00-19:00 in drei gleich langen Phasen, G3/G4 Mi=Fr eine
+# halbe Stunde versetzt (17:00-17:30 kein Training). Greift, wenn eine
+# Gruppe in config.json kein "zeiten"-Feld hat (alte Config oder Fehler) --
+# siehe apply_config_roster().
+#
+# G3 bekommt bewusst die VERSETZTE Zeit (wie G4), nicht dieselbe wie G1/G2:
+# waeren alle drei (G1/G2/G3) zeitgleich, waeren zu Geraet1-Zeit alle drei
+# gleichzeitig auf demselben Geraet -- das verletzt die neue Kapazitaets-
+# Grenze "max. 2 Gruppen gleichzeitig pro Geraet" (Noah-Entscheidung, siehe
+# admin.php::validateGruppenZeiten()). Die alte Live-Zuteilung kam nie in
+# diese Lage, weil G3+G4 vor diesem Umbau ohnehin dauerhaft zusammengelegt
+# waren (siehe CLAUDE.md/Vault [[G3+G4 Dauer-Zusammenlegung]]) -- die
+# versetzte Default-Zeit fuer G3 setzt dieselbe zeitliche Trennung fort,
+# jetzt als eigene Gruppen-Config statt als Code-Sonderfall. G3 und G4 haben
+# dadurch identische Default-Zeiten und sind damit sofort wieder
+# zeit-kompatibel (zeiten_kompatibel()), falls ein Notfall-Merge noetig wird.
+_STANDARD_ZEITEN = {"aufwaermen": {"start": "17:00", "ende": "17:30"},
+                     "geraet1":   {"start": "17:30", "ende": "18:15"},
+                     "geraet2":   {"start": "18:15", "ende": "19:00"}}
+_VERSETZTE_ZEITEN = {"aufwaermen": {"start": "17:30", "ende": "18:15"},
+                      "geraet1":   {"start": "18:15", "ende": "19:00"},
+                      "geraet2":   {"start": "19:00", "ende": "19:30"}}
+
+def _default_zeiten_for(gruppe_name):
+    """Fallback-Zeiten fuer eine Gruppe ohne 'zeiten'-Feld in config.json.
+    'G3'/'G4' (Alt-Sonderfall) bekommen die versetzte Zeit, alles andere die
+    Standard-Zeit -- siehe _STANDARD_ZEITEN/_VERSETZTE_ZEITEN oben."""
+    tag = dict(_VERSETZTE_ZEITEN) if gruppe_name in ("G3", "G4") else dict(_STANDARD_ZEITEN)
+    return {"mi": {k: dict(v) for k, v in tag.items()},
+            "fr": {k: dict(v) for k, v in tag.items()}}
 
 FARBEN = {
     "g1_blau":        "2471A3",
-    "g1_gruen":       "1E8449",
     "g2_orange":      "CA6F1E",
-    "g2_lila":        "7D3C98",
     "aufwaermen":     "A569BD",
     "aufbauen":       "717D7E",
     "springer":       "A0522D",
@@ -72,27 +109,15 @@ FARBEN = {
     "legende_bg":     "2C3E50",
 }
 
-# ────────────────────────────────────────────────────────────────
-#  STRUKTUR-TOGGLE: G3+G4 Dauer-Zusammenlegung (Noah, 18.08.2026)
-# ────────────────────────────────────────────────────────────────
-# G3 und G4 trainieren ab sofort IMMER zusammen als eine feste Einheit
-# "G3+G4" (17:00-19:00 Uhr statt G4 vorher separat 17:30-19:30 Uhr), mit
-# nur noch 1 Trainer statt vorher 2 (plus ganz normal Springer als Backup,
-# wenn genug Trainer da sind - unveraendert wie bei jeder anderen Gruppe).
-# Turner-Listen/Anwesenheit/Wochenchallenge bleiben pro G3 und G4 GETRENNT -
-# nur Trainingszeit + Trainer-Einteilung werden zusammengelegt.
-#
-# Technisch nutzt dies exakt den Zusammenlegungs-Pfad (tpl_merged), der
-# vorher schon situativ bei Trainer-Engpass/kleinen Gruppen lief - jetzt als
-# feste Basis-Einheit statt als Ausnahme. Siehe build_trainer_plan() und
-# build_ki_einteilung().
-#
-# REVERT ("mach alles wie zuvor, trenne G3+G4 auf"): einfach auf False
-# setzen. Stellt die exakte Alt-Logik wieder her (G4 wieder eigenstaendig
-# 17:30-19:30 mit eigenem Trainer; G3+G4-Zusammenlegung wieder nur situativ
-# bei Engpass/kleinen Gruppen, wie vor dem 18.08.2026).
-# Siehe Vault-Notiz [[G3+G4 Dauer-Zusammenlegung]] fuer Details.
-G3_G4_PERMANENT_MERGE = True
+def farbe_fuer_phase(phase):
+    """Einzige Quelle fuer die Zellfarbe einer Phase (2-Farben-Modell, ersetzt
+    das fruehere 4-Farben-Schema): Aufwaermen -> lila, Geraet1 -> blau,
+    Geraet2 -> orange, alles andere (kein Training gerade / Luecke) ->
+    Aufbauen-Grau. Die max.-2-Gruppen-pro-Geraet-Grenze ist seit dem
+    Gruppenzeiten-Umbau eine Config-Invariante (admin.php-Validierung),
+    keine Laufzeit-Berechnung mehr -- ein Alternierungs-Flag wie frueher
+    g1_starts_geraet2 fuer Farben ist deshalb nicht mehr noetig."""
+    return {"aufwaermen": "aufwaermen", "geraet1": "g1_blau", "geraet2": "g2_orange"}.get(phase, "aufbauen")
 
 # ════════════════════════════════════════════════════════════════
 #  UMGEBUNGSVARIABLEN (GitHub Secrets)
@@ -112,7 +137,6 @@ CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 DEFAULT_STATE = {
     "last_training_date": "17.06.2026",
     "geraet_combo_index": 1,      # 0=Boden+Barren, 1=Sprung+Reck, 2=Seitpferd+Ringe
-    "g1_starts_geraet2": True,
     "generated_plans":   ["10.06.26", "17.06.26"],
     "plan_data":         {},
 }
@@ -191,8 +215,11 @@ def get_next_gear(state, exclude_date=None, fixed_entries=None):
     (entfall_published) und Eintraege ohne gueltige Geraetekombination werden
     ignoriert. Vom juengsten gueltigen Plan wird genau EIN Schritt weitergerueckt.
     Reihenfolge (Zyklus): Sprung+Reck -> Seitpferd+Ringe -> Boden+Barren.
-    Gibt (combo_idx, g1_starts_geraet2) zurueck. geraet_combo_index wird bewusst
-    NICHT mehr verwendet (vermeidet Drift / uebersprungene Geraete)."""
+    Gibt combo_idx zurueck. geraet_combo_index wird bewusst NICHT mehr
+    verwendet (vermeidet Drift / uebersprungene Geraete). Das fruehere
+    zusaetzliche g1_starts_geraet2-Alternierungs-Flag diente nur der
+    Farbwahl und ist seit dem Gruppenzeiten-Umbau entfallen (siehe
+    farbe_fuer_phase)."""
     plan_data = state.get("plan_data", {})
     entfall   = set(state.get("entfall_published", []))
     fixed_entries = fixed_entries or {}
@@ -215,23 +242,23 @@ def get_next_gear(state, exclude_date=None, fixed_entries=None):
             d = datetime.strptime(datum_kurz, "%d.%m.%y").date()
         except Exception:
             continue
-        valid.append((d, datum_kurz, idx, pdata.get("g1_starts_geraet2", False)))
+        valid.append((d, datum_kurz, idx))
 
     if not valid:
         print("[ROTATION] Kein gueltiger Geraete-Verlauf in plan_data -> Default Sprung+Reck.")
-        return 1, True   # Sprung+Reck als sinnvoller Startpunkt
+        return 1   # Sprung+Reck als sinnvoller Startpunkt
 
     valid.sort(key=lambda x: x[0])
     last8 = valid[-8:]
-    _, last_key, last_idx, last_g1s = last8[-1]
+    _, last_key, last_idx = last8[-1]
     next_idx = (last_idx + 1) % len(GERAETE_ROTATION)
     verlauf = ", ".join(f"{k}={GERAETE_ROTATION[i][0]}+{GERAETE_ROTATION[i][1]}"
-                        for _, k, i, _ in last8)
+                        for _, k, i in last8)
     print(f"[ROTATION] Letzte {len(last8)} echten Trainings: {verlauf}")
     print(f"[ROTATION] Juengster echter Plan {last_key} = "
           f"{GERAETE_ROTATION[last_idx][0]}+{GERAETE_ROTATION[last_idx][1]} "
           f"-> naechster: {GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
-    return next_idx, (not last_g1s)
+    return next_idx
 
 def active_training_date():
     """Aktuell relevanter Trainingstag.
@@ -449,7 +476,7 @@ def upload_xlsx(sftp, local_path, datum_kurz):
     sftp.put(local_path, remote)
     print(f"[OK] Hochgeladen: {remote}")
 
-def build_aktuell_json(datum, datum_kurz, wochentag, geraet_1, geraet_2, trainer_plan, abwesend):
+def build_aktuell_json(datum, datum_kurz, wochentag, geraet_1, geraet_2, trainer_plan, abwesend, grid_rows):
     """Erstellt trainingsplan_aktuell.json für iOS Widgets."""
     tag, monat, jahr = datum.split(".")
     datum_iso = f"{jahr}-{monat}-{tag}"
@@ -461,10 +488,10 @@ def build_aktuell_json(datum, datum_kurz, wochentag, geraet_1, geraet_2, trainer
         if trainer in abwesend.get("Trainer", []):
             continue
         slots = []
-        for slot_idx, slot_time in enumerate(ZEITSLOTS):
+        for slot_idx, (row_start, _row_end) in enumerate(grid_rows):
             if slot_idx < len(plan):
                 text, _ = plan[slot_idx]
-                slots.append({"zeit_start": slot_time.split("–")[0], "aufgabe": text})
+                slots.append({"zeit_start": _min_to_hhmm(row_start), "aufgabe": text})
         einteilung[trainer] = slots
     return {
         "datum": datum, "datum_iso": datum_iso, "wochentag": wochentag,
@@ -481,11 +508,90 @@ def upload_aktuell_json(sftp, json_data):
     print("[OK] Hochgeladen: trainingspläne/trainingsplan_aktuell.json")
 
 # ════════════════════════════════════════════════════════════════
-#  ABWESENHEITEN AUSWERTEN
+#  DYNAMISCHES ZEITRASTER (ersetzt das frühere feste 5-Slot-Raster)
 # ════════════════════════════════════════════════════════════════
 
-SLOT_START_MIN = [17*60+0, 17*60+30, 18*60+0, 18*60+15, 19*60+0]   # 17:00,17:30,18:00,18:15,19:00
-SLOT_END_MIN   = [17*60+30, 18*60+0, 18*60+15, 19*60+0, 19*60+30]
+def _hhmm_to_min(s):
+    h, m = str(s).split(":")
+    return int(h) * 60 + int(m)
+
+def _min_to_hhmm(m):
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+def tag_of_date(d):
+    """'mi'/'fr' aus einem Trainingsdatum -- Schluessel in GRUPPEN_ZEITEN."""
+    return "mi" if d.weekday() == 2 else "fr"
+
+def compute_time_grid(gruppen_zeiten, tag):
+    """Baut das dynamische Zeitraster fuer einen Wochentag ('mi'/'fr') aus den
+    konfigurierten Gruppenzeiten: sammelt alle Start-/End-Minuten aller
+    Gruppen-Phasen, bildet daraus die sortierte, lueckenlose Zeilenfolge.
+    Ersetzt das fruehere feste 5-Zeilen-Raster (SLOT_START_MIN/SLOT_END_MIN).
+    Fuer die migrierten Default-Zeiten (G1/G2/G3 17:00-17:30/17:30-18:15/
+    18:15-19:00, G4 versetzt) liefert das 4 statt der frueheren 5 Zeilen --
+    die alte fuenfte Zeile (18:00-18:15) war eine willkuerliche Unterteilung
+    MITTEN in der durchgehenden Geraet1-Phase (17:30-18:15) ohne eigene
+    Bedeutung (dieselbe Farbe/derselbe Text in beiden Teil-Zeilen). Das neue
+    Raster leitet Zeilen ausschliesslich aus echten Phasengrenzen ab, wodurch
+    dieser doppelte Eintrag entfaellt -- inhaltlich (Farben/Zeiten/Text)
+    aendert sich dadurch nichts, der gedruckte Plan wird nur um eine
+    redundante Zeile kuerzer.
+
+    Gibt (rows, phase_by_gruppe) zurueck:
+      rows            = [(start_min, end_min), ...] sortiert, lueckenlos
+      phase_by_gruppe = {gruppe: ["aufwaermen"|"geraet1"|"geraet2"|None, ...]} je Zeile
+    """
+    boundaries = set()
+    for tage in (gruppen_zeiten or {}).values():
+        zeiten = tage.get(tag) or {}
+        for phase in ("aufwaermen", "geraet1", "geraet2"):
+            fenster = zeiten.get(phase)
+            if not fenster:
+                continue
+            boundaries.add(_hhmm_to_min(fenster["start"]))
+            boundaries.add(_hhmm_to_min(fenster["ende"]))
+    bounds = sorted(boundaries)
+    rows = list(zip(bounds, bounds[1:]))
+    phase_by_gruppe = {}
+    for g, tage in (gruppen_zeiten or {}).items():
+        zeiten = tage.get(tag) or {}
+        row_phases = []
+        for (s, e) in rows:
+            mid = (s + e) // 2
+            phase = None
+            for ph in ("aufwaermen", "geraet1", "geraet2"):
+                fenster = zeiten.get(ph)
+                if fenster and _hhmm_to_min(fenster["start"]) <= mid < _hhmm_to_min(fenster["ende"]):
+                    phase = ph
+                    break
+            row_phases.append(phase)
+        phase_by_gruppe[g] = row_phases
+    return rows, phase_by_gruppe
+
+def group_active_rows(row_phases):
+    """Erster/letzter Zeilen-Index einer Gruppe mit einer echten Phase (nicht
+    None) -- fuer die Aufbauen/Abbauen-Randzeilen (z.B. wartet eine Gruppe,
+    die spaeter beginnt, die erste Zeile mit Aufbauen statt Aufwaermen)."""
+    active = [i for i, p in enumerate(row_phases) if p is not None]
+    if not active:
+        return None, None
+    return active[0], active[-1]
+
+def zeiten_kompatibel(gruppen_zeiten, a, b):
+    """True, wenn zwei Gruppen an BEIDEN Wochentagen exakt dieselben Phasen-
+    Zeitfenster haben -- Voraussetzung fuer eine Zusammenlegung (ein Trainer
+    kann nicht gleichzeitig zwei verschiedene Zeitplaene halten)."""
+    za, zb = gruppen_zeiten.get(a) or {}, gruppen_zeiten.get(b) or {}
+    for tag in ("mi", "fr"):
+        ta, tb = za.get(tag) or {}, zb.get(tag) or {}
+        for phase in ("aufwaermen", "geraet1", "geraet2"):
+            if (ta.get(phase) or {}) != (tb.get(phase) or {}):
+                return False
+    return True
+
+# ════════════════════════════════════════════════════════════════
+#  ABWESENHEITEN AUSWERTEN
+# ════════════════════════════════════════════════════════════════
 
 def _extract_time_min(notiz):
     """Findet eine Uhrzeit (HH:MM, HH.MM, 'HH Uhr') -> Minuten seit 0:00 oder None."""
@@ -536,16 +642,20 @@ def is_timing_note(notiz, kind, tmin):
               "kommt erst", "komme erst", "geht früh", "geh früh", "nur bis"]
     return any(k in s for k in strong)
 
-def compute_blocked_slots(kind, time_min):
-    """Set geblockter Slot-Indizes (0..4). spaet: bis Ankunft; frueh: ab Weggang."""
+def compute_blocked_slots(kind, time_min, grid_rows):
+    """Set geblockter Zeilen-Indizes im dynamischen Raster. spaet: bis Ankunft;
+    frueh: ab Weggang."""
+    n = len(grid_rows)
+    if not n:
+        return set()
     if kind == "spaet":
         if time_min is None:
             return {0}
-        return {i for i in range(5) if time_min > SLOT_START_MIN[i]}
+        return {i for i, (s, _e) in enumerate(grid_rows) if time_min > s}
     if kind == "frueh":
         if time_min is None:
-            return {4}
-        return {i for i in range(5) if time_min < SLOT_END_MIN[i]}
+            return {n - 1}
+        return {i for i, (_s, e) in enumerate(grid_rows) if time_min < e}
     return set()
 
 def upload_anmerkungen_auto(sftp, datum_kurz, lines):
@@ -599,11 +709,10 @@ def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
 def apply_timing_coverage(trainer_plan, trainer_timing):
     """Vertretung: geht ein Trainer frueher / kommt spaeter, uebernimmt fuer die
     fehlenden Slots ein freier Trainer (bevorzugt der Springer) dessen Gruppe.
-    Der Springer verlaesst dafuer kurz seine Julian-Bereitschaft (laut Noah ok).
     MUSS VOR apply_timing_blocks laufen (liest die Original-Gruppenzelle)."""
     if not trainer_timing:
         return trainer_plan
-    GRUPPEN_COLORS = {"aufwaermen", "g1_blau", "g1_gruen", "g2_orange", "g2_lila"}
+    GRUPPEN_COLORS = {"aufwaermen", "g1_blau", "g2_orange"}
     for name, info in trainer_timing.items():
         plan = trainer_plan.get(name)
         if not plan:
@@ -639,9 +748,10 @@ def apply_timing_blocks(trainer_plan, trainer_timing):
         trainer_plan[name] = new
     return trainer_plan
 
-def get_absences(abmeldungen, training_date):
+def get_absences(abmeldungen, training_date, grid_rows):
     target    = training_date.strftime("%Y-%m-%d")
-    absences  = {"G1": [], "G2": [], "G3": [], "G4": [], "Trainer": []}
+    absences  = {g: [] for g in GRUPPEN_ORDER}
+    absences["Trainer"] = []
     late_notes = []
     trainer_timing = {}
 
@@ -659,7 +769,7 @@ def get_absences(abmeldungen, training_date):
             if is_versp or is_timing_note(notiz, kind, tmin):
                 if kind is None:
                     kind = "spaet"
-                blocked = compute_blocked_slots(kind, tmin)
+                blocked = compute_blocked_slots(kind, tmin, grid_rows)
                 tstr = f"{tmin//60:02d}:{tmin%60:02d}" if tmin is not None else None
                 trainer_timing[name] = {
                     "kind": kind, "time_min": tmin, "time_str": tstr,
@@ -676,11 +786,6 @@ def get_absences(abmeldungen, training_date):
 #  KOMPLEXE FÄLLE ERKENNEN
 # ════════════════════════════════════════════════════════════════
 
-ALLE_BEKANNTEN_NAMES = set()
-for _g, _lst in ALLE_TURNER.items():
-    ALLE_BEKANNTEN_NAMES.update(_lst)
-ALLE_BEKANNTEN_NAMES.update(ALLE_TRAINER)
-
 def detect_complex(absences, late_notes):
     # Es wird IMMER ein Plan erstellt. Staffing-Probleme sind nur soft_warnings
     # (Hinweis per WhatsApp/Mail) -> autonomer Plan auch bei wenig Trainern/Kindern.
@@ -692,12 +797,16 @@ def detect_complex(absences, late_notes):
         soft_warnings.append((f"low_trainer_{n}",
             f"Nur {n} Trainer anwesend ({', '.join(anwesend_trainer) or '-'}). "
             f"Gruppen werden automatisch sinnvoll zusammengelegt."))
+    bekannte_namen = set(ALLE_TRAINER)
+    for turner in ALLE_TURNER.values():
+        bekannte_namen.update(turner)
     for gruppe, names in absences.items():
         for name in names:
-            if name not in ALLE_BEKANNTEN_NAMES:
+            if name not in bekannte_namen:
                 soft_warnings.append((f"unknown_{gruppe}_{name}",
                     f"Unbekannter Name: '{name}' (Gruppe {gruppe})"))
-    for gruppe, turner in ALLE_TURNER.items():
+    for gruppe in GRUPPEN_ORDER:
+        turner = ALLE_TURNER.get(gruppe, [])
         abw = absences.get(gruppe, [])
         anwesend = len(turner) - len(abw)
         if len(abw) >= len(turner):
@@ -708,138 +817,97 @@ def detect_complex(absences, late_notes):
     return issues, anwesend_trainer, soft_warnings
 
 # ════════════════════════════════════════════════════════════════
-#  TRAINER-EINTEILUNG
+#  GERAETE-FARBEN / ZELLEN: EINZIGE Quelle fuer ALLE Trainer-Plan-Builder
+#  (Standard-Pfad build_trainer_plan, KI-Pfad build_ki_einteilung, Not-
+#  besetzung _build_lowstaff_plan, Admin-Fallback build_admin_trainer_plan).
+#  Bugfix 12./19.08.2026 (Noah): vorher hatte jeder Builder seine eigene
+#  Kopie dieser Zuordnung und lief bei bestimmten Konstellationen auseinander
+#  (Farb-Kollisionen zwischen Gruppen). Seit dem Gruppenzeiten-Umbau ist das
+#  strukturell ausgeschlossen: nur noch 2 Farben (Geraet1/Geraet2), und eine
+#  Zusammenlegung ist ueberhaupt nur zwischen zeit-kompatiblen Gruppen
+#  erlaubt (siehe zeiten_kompatibel), wodurch nie zwei Einheiten dieselbe
+#  Zeile gleichzeitig beanspruchen koennen.
 # ════════════════════════════════════════════════════════════════
 
-def _build_lowstaff_plan(available, abwesend):
-    """Notbesetzung (<=3 Trainer): Gruppen zusammenlegen, alle trainieren 17:00-19:00.
-    3 Trainer -> G1, G2, G3+G4 | 2 -> G1+G2, G3+G4 | 1 -> alle zusammen."""
-    pool = list(available)
-    def pop_by_first(lst, fn):
-        for i, t in enumerate(lst):
-            if t.startswith(fn):
-                return lst.pop(i)
-        return None
-    ordered = []
-    noah = pop_by_first(pool, "Noah")
-    if noah:
-        ordered.append(noah)
-    ordered += pool
-    n = len(ordered)
-    tpl = {
-        "G1":    [("AW G1", "aufwaermen"), ("G1", "g1_blau"), ("G1", "g1_blau"), ("G1", "g1_blau"), ("Abbauen", "aufbauen")],
-        "G2":    [("AW G2", "aufwaermen"), ("G2", "g1_gruen"), ("G2", "g1_gruen"), ("G2", "g1_gruen"), ("Abbauen", "aufbauen")],
-        "G1+G2": [("AW G1+G2", "aufwaermen"), ("G1+G2", "g1_blau"), ("G1+G2", "g1_blau"), ("G1+G2", "g1_blau"), ("Abbauen", "aufbauen")],
-        "G3+G4": [("AW G3+G4", "aufwaermen"), ("G3+G4", "g2_orange"), ("G3+G4", "g2_orange"), ("G3+G4", "g2_orange"), ("Abbauen", "aufbauen")],
-        "Alle":  [("AW Alle", "aufwaermen"), ("Alle Gruppen", "g1_gruen"), ("Alle Gruppen", "g1_gruen"), ("Alle Gruppen", "g1_gruen"), ("Abbauen", "aufbauen")],
-    }
-    if n == 3:
-        labels = ["G1", "G2", "G3+G4"]
-    elif n == 2:
-        labels = ["G1+G2", "G3+G4"]
-    elif n == 1:
-        labels = ["Alle"]
-    else:
-        labels = []
-    assign = {}
-    for i, t in enumerate(ordered):
-        if i < len(labels):
-            assign[t] = labels[i]
-    TRAINER_PLAN = {}
-    for t in ALLE_TRAINER:
-        TRAINER_PLAN[t] = [tuple(x) for x in tpl[assign[t]]] if t in assign else None
-    anmerkungen = ["Alle Gruppen trainieren von 17:00-19:00 Uhr."]
+def _cells_for_unit(label, groups, grid_rows, grid_phase):
+    """Baut die Zellen-Liste (Text, Farbschluessel) je Zeitraster-Zeile fuer
+    eine Trainer-Einheit (eine Gruppe oder mehrere zeit-kompatible Gruppen
+    zusammengelegt -- alle Gruppen der Einheit haben laut zeiten_kompatibel
+    exakt dasselbe Phasenmuster, jede von ihnen kann daher als Referenz
+    dienen)."""
+    ref = groups[0]
+    ref_phases = grid_phase.get(ref) or [None] * len(grid_rows)
+    first_active, last_active = group_active_rows(ref_phases)
+    cells = []
+    for i in range(len(grid_rows)):
+        phase = ref_phases[i] if i < len(ref_phases) else None
+        if phase == "aufwaermen":
+            cells.append((f"AW {label}", "aufwaermen"))
+        elif phase in ("geraet1", "geraet2"):
+            cells.append((label, farbe_fuer_phase(phase)))
+        elif first_active is not None and i > last_active:
+            cells.append(("Abbauen", "aufbauen"))
+        else:
+            cells.append(("Aufbauen", "aufbauen"))
+    return cells
+
+def _springer_cells(grid_rows):
+    n = len(grid_rows)
     if n == 0:
-        anmerkungen.append("ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
-    return TRAINER_PLAN, {}, anmerkungen
+        return []
+    if n == 1:
+        return [("Springer", "springer")]
+    return [("Aufbauen", "aufbauen")] + [("Springer", "springer")] * (n - 2) + [("Abbauen", "aufbauen")]
 
-
-
-# ════════════════════════════════════════════════════════════════
-#  GERAETE-FARBEN: EINZIGE Quelle fuer beide Trainer-Plan-Builder
-#  (Standard-Pfad build_trainer_plan + KI-Pfad build_ki_einteilung).
-#  Bugfix 12.08.2026 (Noah): vorher hatte jeder Builder seine eigene Kopie
-#  dieser Zuordnung, und im g1_starts_geraet2=True-Zweig kollidierten G2 und
-#  G3 auf "g1_blau" (dieselbe Station gleichzeitig doppelt belegt), waehrend
-#  G2 dadurch zweimal dasselbe Geraet turnte statt beide Geraete zu durchlaufen.
-#  Jetzt zentral hier definiert, damit ein Fix nicht mehr an zwei Stellen
-#  gepflegt werden muss und nicht wieder auseinanderlaufen kann.
-# ════════════════════════════════════════════════════════════════
-
-def geraet_farbe(gruppe, phase, g1_starts_geraet2):
-    """Farbe/Station fuer G1/G2/G3 je Phase (1 = Slots 2+3, 2 = Slot 4).
-    Regel (siehe Vault [[Gruppen, Zeiten und Geräte-Rotation]]): G1+G2 turnen
-    IMMER denselben Geraetetyp gleichzeitig (auf den zwei verschiedenen Farben
-    dieses Geraets), G3 IMMER den jeweils anderen Typ. Dadurch ist innerhalb
-    einer Phase jede Farbe nur genau einer Gruppe zugeteilt, und jede Gruppe
-    durchlaeuft ueber beide Phasen beide Geraete (nie zweimal dasselbe)."""
-    if g1_starts_geraet2:
-        m = ({"G1": "g2_orange", "G2": "g2_lila",  "G3": "g1_blau"}   if phase == 1
-             else {"G1": "g1_blau",  "G2": "g1_gruen", "G3": "g2_orange"})
-    else:
-        m = ({"G1": "g1_blau",  "G2": "g1_gruen", "G3": "g2_orange"} if phase == 1
-             else {"G1": "g2_orange", "G2": "g2_lila",  "G3": "g1_blau"})
-    return m.get(gruppe, "aufbauen")
-
-def geraet_farbe_g4(g1_starts_geraet2):
-    """G4-Farben fuer Slot 4 (18:15-19:00) und Slot 5 (19:00-19:30) -- immer
-    die Farbe, die von G1/G2/G3 in dem Moment gerade frei ist (G4 turnt laut
-    Regel 'das gerade freie Geraet'). Muss wie geraet_farbe() vom
-    g1_starts_geraet2-Flag abhaengen, sonst kollidiert G4 in Slot 4 mit G2,
-    sobald G1+G2 in Phase 2 beide Faerbungen von Geraet 1 belegen."""
-    return ("g2_lila", "g1_gruen") if g1_starts_geraet2 else ("g1_gruen", "g2_orange")
-
-def _merged_ref_group(groups):
-    """Referenz-Gruppe fuer die Farbwahl einer zusammengelegten Einheit (z.B.
-    ["G3","G4"] fuer die G3+G4-Dauer-Einheit oder ein situativer Engpass-Merge).
-    Bugfix 19.08.2026 (Noah, Regression nach G3+G4-Dauer-Zusammenlegung 18.08.2026):
-    vorher hatten tpl_merged() (Standard-Pfad) und _cells() (KI-/Anmerkungs-Pfad)
-    JEWEILS eine eigene, von g1_starts_geraet2 UNABHAENGIGE Hartverdrahtung
-    ("g1_blau"/"g2_orange" nach Einheiten-Index-Paritaet). Bei g1_starts_geraet2=False
-    ergab das fuer eine gerade Einheiten-Position exakt dieselben Farben wie G1 ->
-    zwei Gruppen gleichzeitig auf "Geraet 1 blau" (z.B. 19.08.2026: G1 und G3+G4
-    beide blau). Fix: die zusammengelegte Einheit uebernimmt die Farbreihe einer
-    ihrer Original-Gruppen aus der bereits kollisionsfreien geraet_farbe()-Tabelle
-    (G1/G2/G3 belegen dort garantiert unterschiedliche Farben je Phase) - dadurch
-    kann eine Einheit nie mit einer separat gebliebenen Einzelgruppe kollidieren,
-    da jede Gruppen-Identitaet immer nur in genau einer Einheit vorkommt."""
-    for g in ("G1", "G2", "G3"):
-        if g in groups:
-            return g
-    return "G3"   # Fallback (z.B. Einheit aus nur ["G4"] sollte hier nie ankommen)
+def unit_label(groups):
+    return "+".join(groups)
 
 # ────────────────────────────────────────────────────────────────
-#  ROLLEN-ROTATION (Bug-Fix 19.08.2026, Noah)
+#  ROLLEN-ROTATION -- echte Fairness ueber ALLE Trainer und ALLE Rollen
 # ────────────────────────────────────────────────────────────────
-# Vorher: der Backup-Pool (Fabian/Cassian/Torben) wurde immer in fester
-# ALLE_TRAINER-Reihenfolge iteriert - dadurch war Torben (letzter Eintrag)
-# quasi Dauer-Springer, sobald Julian ausfiel und einer aus dem Pool eine
-# Gruppe uebernehmen musste, kam immer nur Fabian dran. Jetzt: wer im
-# LETZTEN Plan Springer war, bekommt beim naechsten Mal Prioritaet
-# fuer eine Gruppe; wer eine Gruppe hatte, wird nach hinten sortiert.
-# Speicherung: plan_data[datum_kurz]["trainer_roles"] = {Trainer: "Springer"|"Gruppe"|None}
+# Ersetzt die fruehere Teil-Rotation (nur im Rest-Pool nach fest verdrahteten
+# Trainer-Praeferenzen) durch eine gemeinsame Fairness-Funktion, die von
+# BEIDEM Pfaden (Standard build_trainer_plan UND KI-Pfad build_ki_einteilung)
+# genutzt wird -- bewusst eine gemeinsame Funktion statt zwei Kopien, da
+# genau diese Art Duplizierung in diesem Projekt bereits mehrfach zu
+# Drift-Bugs gefuehrt hat (siehe Farb-Kollisions-Historie).
+# Speicherung weiterhin ueber plan_data[datum_kurz]["trainer_roles"] =
+# {Trainer: "Springer" | <Einheiten-Label z.B. "G1" oder "G2+G3"> | None},
+# aber ueber die letzten (bis zu) 6 Termine aggregiert statt nur den letzten
+# (siehe _load_trainer_roles_history).
 
 def _extract_trainer_roles(trainer_plan):
     """Ermittelt aus einem generierten trainer_plan-Dict die Rolle jedes
-    Trainers: 'Springer' | 'Gruppe' | None. 'Springer' = das Springer-Template
-    (nur Aufbauen/Springer/Abbauen). Alles andere mit Zellen = 'Gruppe'."""
+    Trainers: 'Springer' | <Gruppen-Einheiten-Label> | None. Das konkrete
+    Label (nicht nur ein generisches 'Gruppe') wird gebraucht, damit die
+    Rotations-Fairness weiss, WELCHE Einheit ein Trainer zuletzt hatte."""
     roles = {}
     for t in ALLE_TRAINER:
         cells = (trainer_plan or {}).get(t)
         if not cells:
             roles[t] = None
             continue
-        labs = {str(c[0] or "").strip().lower() for c in cells if isinstance(c, (list, tuple))}
-        if labs and labs <= {"aufbauen", "springer", "abbauen"}:
+        labels = {str(c[0] or "").strip() for c in cells if isinstance(c, (list, tuple))}
+        if labels and labels <= {"Aufbauen", "Abbauen", "Springer"}:
             roles[t] = "Springer"
-        else:
-            roles[t] = "Gruppe"
+            continue
+        gruppen_label = None
+        for c in cells:
+            if not isinstance(c, (list, tuple)) or len(c) < 2:
+                continue
+            text, farbe = c[0], c[1]
+            if farbe in ("g1_blau", "g2_orange") and text:
+                gruppen_label = str(text).strip()
+                break
+        roles[t] = gruppen_label or "Gruppe"
     return roles
 
-def _load_previous_trainer_roles(state, exclude_date=None):
-    """Sucht den JUENGSTEN plan_data-Eintrag (ausser exclude_date) mit
-    gespeicherten trainer_roles. Gibt {} zurueck, wenn nichts vorhanden ist
-    (z.B. erste Woche nach dem Rollout dieser Rotations-Logik)."""
+def _load_trainer_roles_history(state, exclude_date=None, limit=6):
+    """Baut {trainer: [{'date':..., 'role':...}, ...]} (aelteste zuerst) aus
+    den letzten `limit` plan_data-Eintraegen mit gespeicherten trainer_roles
+    -- Grundlage fuer _assign_units_fair(). Kompatibel mit dem alten
+    Ein-Termin-Snapshot-Format (jeder Eintrag war schon {trainer: rolle}
+    PRO Datum, hier wird nur ueber mehrere Termine aggregiert)."""
     pd = (state or {}).get("plan_data", {}) or {}
     entries = []
     for dk, d in pd.items():
@@ -851,25 +919,118 @@ def _load_previous_trainer_roles(state, exclude_date=None):
         if not roles:
             continue
         try:
-            entries.append((datetime.strptime(dk, "%d.%m.%y"), roles))
+            entries.append((datetime.strptime(dk, "%d.%m.%y"), dk, roles))
         except Exception:
             pass
-    if not entries:
-        return {}
     entries.sort(key=lambda x: x[0])
-    return entries[-1][1] or {}
+    history = {}
+    for _d, dk, roles in entries[-limit:]:
+        for trainer, role in roles.items():
+            if role is None:
+                continue
+            history.setdefault(trainer, []).append({"date": dk, "role": role})
+    return history
+
+def _assign_units_fair(units, candidate_trainers, history, immer_springer):
+    """Verteilt `units` (Liste von Einheiten-Labels, z.B. ['G1','G2+G3']) so
+    fair wie moeglich auf `candidate_trainers` ueber ALLE Rollen (welche
+    Einheit ODER Springer). immer_springer-Trainer werden nur als letzte
+    Instanz gezogen, wenn sonst nicht genug Trainer fuer alle Einheiten da
+    sind (dann bevorzugt, wer am laengsten keine Gruppe hatte). Gibt
+    (assign: {trainer: unit}, springers: [trainer]) zurueck."""
+    def recs(t):
+        return history.get(t, [])
+    def times_springer(t):
+        return sum(1 for r in recs(t) if r.get("role") == "Springer")
+    def last_index_for(t, matcher):
+        rs = recs(t)
+        for i in range(len(rs) - 1, -1, -1):
+            if matcher(rs[i]):
+                return i - len(rs)   # negativ; je laenger her, desto kleiner
+        return -999                  # nie -> hoechste Prioritaet
+
+    normal_pool = [t for t in candidate_trainers if t not in immer_springer]
+    forced_pool = [t for t in candidate_trainers if t in immer_springer]
+    n_units = len(units)
+    if len(normal_pool) >= n_units:
+        pool, overflow_springers = list(normal_pool), list(forced_pool)
+    else:
+        need = n_units - len(normal_pool)
+        forced_sorted = sorted(forced_pool,
+            key=lambda t: last_index_for(t, lambda r: r.get("role") != "Springer"))
+        pulled = forced_sorted[:need]
+        pool = normal_pool + pulled
+        overflow_springers = [t for t in forced_pool if t not in pulled]
+
+    pool_sorted = sorted(pool,
+        key=lambda t: (-times_springer(t), last_index_for(t, lambda r: r.get("role") != "Springer")))
+    getters = pool_sorted[:n_units]
+    springers = [t for t in pool if t not in getters] + overflow_springers
+
+    pairs = []
+    for t in getters:
+        for u in units:
+            pairs.append((last_index_for(t, lambda r, u=u: r.get("role") == u), t, u))
+    pairs.sort(key=lambda x: x[0])
+    used_t, used_u, assign = set(), set(), {}
+    for score, t, u in pairs:
+        if t in used_t or u in used_u:
+            continue
+        assign[t] = u
+        used_t.add(t); used_u.add(u)
+    for t, u in zip([t for t in getters if t not in used_t], [u for u in units if u not in used_u]):
+        assign[t] = u
+    return assign, springers
+
+# ════════════════════════════════════════════════════════════════
+#  TRAINER-EINTEILUNG
+# ════════════════════════════════════════════════════════════════
+
+def _build_lowstaff_plan(available, grid_rows, grid_phase, history, immer_springer):
+    """Notbesetzung (<=3 Trainer): konfigurierte Gruppen werden auf so wenige
+    Einheiten wie noetig zusammengelegt (nur zeit-kompatible Nachbarn), dann
+    ueber die gemeinsame Fairness-Funktion zugeteilt -- alle Trainer gleich
+    behandelt (keine Trainer-Praeferenz mehr)."""
+    def _compatible(a, b):
+        return all(zeiten_kompatibel(GRUPPEN_ZEITEN, x, y) for x in a for y in b)
+
+    units = [[g] for g in GRUPPEN_ORDER]
+    while len(units) > max(1, len(available)):
+        merge_i = next((i for i in range(len(units) - 1) if _compatible(units[i], units[i+1])), None)
+        if merge_i is None:
+            break
+        units[merge_i] = units[merge_i] + units[merge_i + 1]
+        del units[merge_i + 1]
+
+    unit_groups = {unit_label(u): u for u in units}
+    labels = list(unit_groups.keys())
+    assign, springers = _assign_units_fair(labels, available, history, immer_springer)
+
+    TRAINER_PLAN = {}
+    for t in ALLE_TRAINER:
+        if t in assign:
+            lab = assign[t]
+            TRAINER_PLAN[t] = _cells_for_unit(lab, unit_groups[lab], grid_rows, grid_phase)
+        elif t in springers:
+            TRAINER_PLAN[t] = _springer_cells(grid_rows)
+        else:
+            TRAINER_PLAN[t] = None
+    anmerkungen = ["Wenig Trainer da: Gruppen wurden automatisch zusammengelegt."]
+    if not available:
+        anmerkungen.append("ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
+    return TRAINER_PLAN, {}, anmerkungen
 
 
-def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_timing=None, prev_trainer_roles=None):
+def build_trainer_plan(absences, grid_rows, grid_phase, trainer_timing=None, trainer_roles_history=None):
     abwesend  = absences.get("Trainer", [])
     available = [t for t in ALLE_TRAINER if t not in abwesend]
     n = len(available)
     trainer_timing = trainer_timing or {}
-    prev_trainer_roles = prev_trainer_roles or {}
+    trainer_roles_history = trainer_roles_history or {}
 
     # anwesende Kinder je Gruppe
-    present = {g: max(0, len(ALLE_TURNER[g]) - len(absences.get(g, []))) for g in ("G1","G2","G3","G4")}
-    active  = [g for g in ("G1","G2","G3","G4") if present[g] >= 1]
+    present = {g: max(0, len(ALLE_TURNER.get(g, [])) - len(absences.get(g, []))) for g in GRUPPEN_ORDER}
+    active  = [g for g in GRUPPEN_ORDER if present[g] >= 1]
 
     anmerkungen = []
 
@@ -886,153 +1047,73 @@ def build_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, trainer_
     partial_set  = {t for t in available if t in trainer_timing}
     full_holders = [t for t in available if t not in partial_set]
     holders_pool = full_holders if full_holders else list(available)   # Notlage-Fallback
-    n_hold = len(holders_pool)
 
     MIN_KIDS = 3   # jede Gruppe braucht >= 3 anwesende Turner, sonst zusammenlegen
 
-    # ---- Einheiten bilden ----
-    if G3_G4_PERMANENT_MERGE:
-        # G3+G4 sind eine feste Basis-Einheit (siehe Toggle oben) statt zwei
-        # separater Einzel-Einheiten. Alle nachfolgenden Schritte (Mindest-
-        # groesse, Trainerzahl-Reduktion, Julian-Springer) arbeiten unveraendert
-        # auf dieser Einheit weiter - identisch zum bisherigen tpl_merged-Pfad.
-        units = []
-        if present["G1"] >= 1: units.append(["G1"])
-        if present["G2"] >= 1: units.append(["G2"])
-        if present["G3"] >= 1 or present["G4"] >= 1: units.append(["G3", "G4"])
-    else:
-        units = [[g] for g in active]
-    def ucount(u): return sum(present[g] for g in u)
-    def crosses(a, b): return a[-1] == "G2" and b[0] == "G3"   # G2|G3-Grenze = last resort
-    def _merge_at(i, j):
-        lo, hi = sorted((i, j))
-        units[lo] = units[lo] + units[hi]
-        del units[hi]
-    def best_merge():
-        best = None
-        for i in range(len(units)-1):
-            combined = ucount(units[i]) + ucount(units[i+1])
-            score = combined + (1000 if crosses(units[i], units[i+1]) else 0)
-            if best is None or score < best[0]:
-                best = (score, i)
-        return best
+    def _compatible(a, b):
+        return all(zeiten_kompatibel(GRUPPEN_ZEITEN, x, y) for x in a for y in b)
 
-    # 1) Mindestgroesse: zu kleine Gruppe (<3) mit bestem Nachbarn (gleiche Seite bevorzugt) mergen
+    units = [[g] for g in active]
+
+    # 1) Mindestgroesse: zu kleine Gruppe (<3) mit einem zeit-kompatiblen
+    #    Nachbarn zusammenlegen. Kein kompatibler Nachbar da -> Gruppe bleibt
+    #    einzeln (Notlage-Fallback statt eines unmoeglichen Merges).
     def _merge_undersized():
         for i, u in enumerate(units):
-            if ucount(u) < MIN_KIDS and len(units) > 1:
-                cands = []
-                if i > 0: cands.append(i-1)
-                if i < len(units)-1: cands.append(i+1)
-                best = None
-                for jj in cands:
-                    a, b = (units[jj], units[i]) if jj < i else (units[i], units[jj])
-                    sc = ucount(a) + ucount(b) + (1000 if crosses(a, b) else 0)
-                    if best is None or sc < best[0]:
-                        best = (sc, jj)
-                _merge_at(i, best[1])
+            if sum(present[g] for g in u) < MIN_KIDS and len(units) > 1:
+                cands = [j for j in (i - 1, i + 1) if 0 <= j < len(units) and _compatible(units[i], units[j])]
+                if not cands:
+                    continue
+                best = min(cands, key=lambda j: sum(present[g] for g in units[i]) + sum(present[g] for g in units[j]))
+                lo, hi = sorted((i, best))
+                units[lo] = units[lo] + units[hi]
+                del units[hi]
                 return True
         return False
     while _merge_undersized():
         pass
 
-    # 2) Nicht mehr Gruppen als Vollzeit-Trainer -> weiter zusammenlegen (kleinste Paarung)
-    while len(units) > max(1, n_hold):
-        bm = best_merge()
-        if not bm: break
-        _merge_at(bm[1], bm[1]+1)
+    # 2) Nicht mehr Einheiten als Vollzeit-Halter -> weiter zusammenlegen
+    #    (kleinste zeit-kompatible Paarung zuerst). Gibt es keinen
+    #    kompatiblen Merge-Partner mehr, bleiben ueberzaehlige Einheiten
+    #    einzeln (Notlage) -- werden dann unten als unbesetzt markiert.
+    while len(units) > max(1, len(holders_pool)):
+        best = None
+        for i in range(len(units)):
+            for j in range(i + 1, len(units)):
+                if not _compatible(units[i], units[j]):
+                    continue
+                score = sum(present[g] for g in units[i]) + sum(present[g] for g in units[j])
+                if best is None or score < best[0]:
+                    best = (score, i, j)
+        if best is None:
+            break
+        _, i, j = best
+        units[i] = units[i] + units[j]
+        del units[j]
 
-    # 3) Julian-Springer-Prinzip (nur mit Vollzeit-Haltern, zusammengelegte Gruppe <= 8)
-    julian_present = any(t.startswith("Julian") for t in holders_pool)
-    if julian_present and (n_hold - len(units)) == 0 and len(units) >= 2:
-        bm = best_merge()
-        if bm is not None and (ucount(units[bm[1]]) + ucount(units[bm[1]+1])) <= 8:
-            _merge_at(bm[1], bm[1]+1)
+    unit_groups = {unit_label(u): u for u in units}
+    labels = list(unit_groups.keys())
+    assign, springers = _assign_units_fair(labels, holders_pool, trainer_roles_history, IMMER_SPRINGER)
 
-    # G4-Zeit-Hinweis, wenn G4 in einer Zusammenlegung ist (nur bei situativer
-    # Zusammenlegung relevant - bei der permanenten G3+G4-Einheit ist das der
-    # neue Normalfall und braucht keinen Extra-Hinweis mehr).
-    if not G3_G4_PERMANENT_MERGE and any(len(u) >= 2 and "G4" in u for u in units):
-        anmerkungen.append("Gruppe 4 hat zwischen 17:00-19:00 Training")
+    unassigned_units = [lab for lab in labels if lab not in assign]
+    if unassigned_units:
+        anmerkungen.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(unassigned_units))
 
-    # ---- Trainer den Einheiten zuordnen: nur Vollzeit-Halter bekommen Gruppen ----
-    pool = list(holders_pool)
-    def pop_first(name):
-        for i, t in enumerate(pool):
-            if t.startswith(name): return pool.pop(i)
-        return None
-    def unit_with(g):
-        for idx, u in enumerate(units):
-            if g in u: return idx
-        return None
-    noah = pop_first("Noah"); andy = pop_first("Andy"); julian = pop_first("Julian")
-
-    # ── Rollen-Rotation (Bug-Fix 19.08.2026, Noah) ─────────────────────────
-    # Sortiere den restlichen Pool (typischerweise Fabian/Cassian/Torben) so,
-    # dass Trainer, die im LETZTEN Plan Springer waren, ZUERST kommen (=hoehere
-    # Chance auf eine Gruppe). Trainer, die eine Gruppe hatten, wandern nach
-    # hinten (=hoehere Chance, jetzt Springer zu werden). Wenn kein vorheriger
-    # Plan mit Rollen bekannt ist, bleibt die urspruengliche Reihenfolge -
-    # kein Regressionsrisiko fuer bestehende Zuteilungen.
-    def _prev_role_key(t):
-        r = prev_trainer_roles.get(t)
-        if r == "Springer":
-            return 0     # vorher Springer -> jetzt Prio auf Gruppe
-        if r == "Gruppe":
-            return 2     # vorher Gruppe -> jetzt nach hinten (eher Springer)
-        return 1         # unbekannt/neu -> Mitte
-    pool.sort(key=lambda t: (_prev_role_key(t), ALLE_TRAINER.index(t) if t in ALLE_TRAINER else 99))
-
-    order = [t for t in (noah, andy, julian) if t] + pool
-    pref = {}
-    if noah: pref[noah] = unit_with("G1")
-    if andy: pref[andy] = unit_with("G4")
-
-    taken = set(); assigned = {}; springers = []
-    for t in order:
-        idx = pref.get(t)
-        if idx is None or idx in taken:
-            idx = next((j for j in range(len(units)) if j not in taken), None)
-        if idx is None:
-            springers.append(t)
-        else:
-            assigned[t] = idx; taken.add(idx)
-    # partielle (frueh/spaet) + uebrige Vollzeit-Trainer -> Springer
+    # partielle (frueh/spaet) Trainer -> immer Springer
     for t in available:
-        if t not in assigned and t not in springers:
+        if t not in assign and t not in springers:
             springers.append(t)
-
-    # ---- Farben / Templates ----
-    def farbe(gruppe, phase):
-        return geraet_farbe(gruppe, phase, g1_starts_geraet2)
-    G4_SLOT3, G4_SLOT4 = geraet_farbe_g4(g1_starts_geraet2)
-
-    def label_of(u):
-        return "Alle Gruppen" if len(u) == 4 else "+".join(u)
-    def tpl_single(g):
-        return [("AW "+g,"aufwaermen"),(g,farbe(g,1)),(g,farbe(g,1)),(g,farbe(g,2)),("Abbauen","aufbauen")]
-    def tpl_g4():
-        return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",G4_SLOT3),("G4",G4_SLOT4)]
-    def tpl_merged(label, groups):
-        ref = _merged_ref_group(groups)
-        c1, c2 = farbe(ref, 1), farbe(ref, 2)
-        return [("AW "+label,"aufwaermen"),(label,c1),(label,c1),(label,c2),("Abbauen","aufbauen")]
-    def tpl_springer():
-        return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
 
     TRAINER_PLAN = {}
     for t in ALLE_TRAINER:
-        if t not in assigned and t not in springers:
-            TRAINER_PLAN[t] = None; continue
-        if t in springers:
-            TRAINER_PLAN[t] = tpl_springer(); continue
-        u = units[assigned[t]]
-        if u == ["G4"]:
-            TRAINER_PLAN[t] = tpl_g4()
-        elif len(u) == 1:
-            TRAINER_PLAN[t] = tpl_single(u[0])
+        if t in assign:
+            lab = assign[t]
+            TRAINER_PLAN[t] = _cells_for_unit(lab, unit_groups[lab], grid_rows, grid_phase)
+        elif t in springers:
+            TRAINER_PLAN[t] = _springer_cells(grid_rows)
         else:
-            TRAINER_PLAN[t] = tpl_merged(label_of(u), u)
+            TRAINER_PLAN[t] = None
 
     return TRAINER_PLAN, {}, anmerkungen
 
@@ -1065,45 +1146,49 @@ def merge_set(ws, row, cs, ce, value, hex_fill, fnt, aln=None):
     return c
 
 def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
-                trainer_plan, sondertiming, anmerkungen):
+                trainer_plan, sondertiming, anmerkungen, grid_rows):
     datum_kurz = datum[0:2] + "." + datum[3:5] + "." + datum[8:10]
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Trainingsplan"
 
-    for col in "ABCDEFGHI":
-        ws.column_dimensions[col].width = 13
+    trainer_col = 3 + len(GRUPPEN_ORDER)   # Spalte "TRAINER" in der Anwesenheitstabelle
+    end_col     = trainer_col + 1          # rechte Randspalte (wie frueher Spalte 8 bei 4 Gruppen)
+    n_cols      = max(9, end_col + 1)      # mind. A-I wie frueher, sonst dynamisch breiter
+
+    for ci in range(1, n_cols + 1):
+        ws.column_dimensions[get_column_letter(ci)].width = 13
 
     row = 1
 
-    merge_set(ws, row, 2, 8,
+    merge_set(ws, row, 2, end_col,
         f"TRAININGSPLAN | {wochentag}, {datum}",
         FARBEN["titel"], font(bold=True, size=13), align(h="left"))
     row += 1
 
-    merge_set(ws, row, 2, 8,
+    merge_set(ws, row, 2, end_col,
         f"Gerät 1 = {geraet_1} | Gerät 2 = {geraet_2}",
         FARBEN["header"], font(size=10), align(h="left"))
     row += 1
 
-    merge_set(ws, row, 2, 8, "ANWESENHEITEN",
+    merge_set(ws, row, 2, end_col, "ANWESENHEITEN",
         FARBEN["titel"], font(bold=True, size=10))
     row += 1
 
-    for col_idx, label in enumerate(["G1","G2","G3","G4","TRAINER"], start=3):
+    for col_idx, label in enumerate(GRUPPEN_ORDER + ["TRAINER"], start=3):
         set_cell(ws, row, col_idx, label, FARBEN["header"], font(bold=True))
     row += 1
 
-    max_len = max(max(len(v) for v in ALLE_TURNER.values()), len(ALLE_TRAINER))
+    max_len = max([len(v) for v in ALLE_TURNER.values()] + [len(ALLE_TRAINER)])
     alt = ["EBF5FB","FFFFFF"]
 
     for i in range(max_len):
         a = alt[i % 2]
-        for col_bg in [2, 8]:
+        for col_bg in [2, end_col]:
             ws.cell(row=row, column=col_bg).fill = fill("FFFFFF")
 
-        for ci, gruppe in enumerate(["G1","G2","G3","G4"], start=3):
-            tlist = ALLE_TURNER[gruppe]
+        for ci, gruppe in enumerate(GRUPPEN_ORDER, start=3):
+            tlist = ALLE_TURNER.get(gruppe, [])
             if i < len(tlist):
                 name = tlist[i]
                 ab   = name in abwesend.get(gruppe, [])
@@ -1117,24 +1202,22 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
         if i < len(ALLE_TRAINER):
             name = ALLE_TRAINER[i]
             ab   = name in abwesend.get("Trainer", [])
-            set_cell(ws, row, 7,
+            set_cell(ws, row, trainer_col,
                      f"{'✗' if ab else '✓'} {name}",
                      FARBEN["abwesend_turner"] if ab else FARBEN["anwesend"],
                      font(size=9, color="FFFFFF"), align(h="left"))
         else:
-            ws.cell(row=row, column=7).fill = fill(a)
+            ws.cell(row=row, column=trainer_col).fill = fill(a)
         row += 1
 
     row += 1
 
-    merge_set(ws, row, 2, 8, "GERAETE-LEGENDE",
+    merge_set(ws, row, 2, end_col, "GERAETE-LEGENDE",
         FARBEN["legende_bg"], font(bold=True, size=10))
     row += 1
     items = [
         (geraet_1, FARBEN["g1_blau"]),
-        (geraet_1, FARBEN["g1_gruen"]),
         (geraet_2, FARBEN["g2_orange"]),
-        (geraet_2, FARBEN["g2_lila"]),
         ("Aufwaermen", FARBEN["aufwaermen"]),
         ("Aufbauen/Abbauen", FARBEN["aufbauen"]),
         ("Springer", FARBEN["springer"]),
@@ -1145,7 +1228,7 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
 
     row += 1
 
-    merge_set(ws, row, 2, 8, "TRAINER-EINTEILUNG",
+    merge_set(ws, row, 2, end_col, "TRAINER-EINTEILUNG",
         FARBEN["legende_bg"], font(bold=True, size=10))
     row += 1
 
@@ -1157,7 +1240,8 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
         set_cell(ws, row, ci, trainer, FARBEN["header"], font(bold=True))
     row += 1
 
-    for slot_idx, slot_label in enumerate(ZEITSLOTS):
+    for slot_idx, (row_start, row_end) in enumerate(grid_rows):
+        slot_label = f"{_min_to_hhmm(row_start)}–{_min_to_hhmm(row_end)}"
         ws.row_dimensions[row].height = 38
         set_cell(ws, row, 2, slot_label, FARBEN["header"], font(bold=True))
 
@@ -1177,11 +1261,11 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
         row += 1
 
     if anmerkungen:
-        merge_set(ws, row, 2, 8, "ANMERKUNGEN",
+        merge_set(ws, row, 2, end_col, "ANMERKUNGEN",
             FARBEN["anmerkung"], font(bold=True, size=9, color="1A5276"))
         row += 1
         for anm in anmerkungen:
-            merge_set(ws, row, 2, 8, anm,
+            merge_set(ws, row, 2, end_col, anm,
                 FARBEN["anmerkung"], font(size=9, color="1A5276"), align(h="left"))
             row += 1
 
@@ -1266,12 +1350,16 @@ def send_whatsapp(text):
 
 def apply_config_roster(sftp):
     """Laedt config/config.json (von admin.php gepflegt) und befuellt
-    ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY. Seit Phase 2 (24.08.2026)
-    gibt es KEINE hartkodierte Namensliste mehr im Repo -- bei jedem Fehler
-    bleiben die drei Strukturen leer, und main() bricht danach ueber den
+    ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY, GRUPPEN_ORDER,
+    GRUPPEN_ZEITEN, IMMER_SPRINGER. Seit Phase 2 (24.08.2026) gibt es KEINE
+    hartkodierte Namensliste mehr im Repo -- bei jedem Fehler bleiben die
+    Strukturen leer, und main() bricht danach ueber den
     REQUIRE_SERVER_ROSTER-Check klar ab, statt einen kaputten/leeren Plan zu
-    erzeugen."""
-    global ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY
+    erzeugen. `gruppen` kann sowohl das neue Objekt-Format
+    ({"name":..,"zeiten":{...}}, seit dem Gruppenzeiten-Umbau) als auch das
+    alte String-Format (vor der Migration) enthalten -- fehlt "zeiten",
+    greifen die migrierten Default-Werte (_default_zeiten_for)."""
+    global ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY, GRUPPEN_ORDER, GRUPPEN_ZEITEN, IMMER_SPRINGER
     try:
         f = sftp.open("config/config.json", "r")
         cfg = json.loads(f.read().decode("utf-8", errors="replace"))
@@ -1280,9 +1368,24 @@ def apply_config_roster(sftp):
         print(f"[CONFIG] config.json nicht ladbar ({e!r}).")
         return
     try:
-        gruppen = cfg.get("gruppen") or ["G1", "G2", "G3", "G4"]
-        turner  = {g: [] for g in gruppen}
+        gruppen_raw = cfg.get("gruppen") or []
+        gruppen_names, zeiten = [], {}
+        for g in gruppen_raw:
+            if isinstance(g, dict) and g.get("name"):
+                name = g["name"]
+                gz = g.get("zeiten")
+                zeiten[name] = gz if isinstance(gz, dict) and gz.get("mi") and gz.get("fr") else _default_zeiten_for(name)
+                gruppen_names.append(name)
+            elif isinstance(g, str):
+                zeiten[g] = _default_zeiten_for(g)
+                gruppen_names.append(g)
+        if not gruppen_names:
+            gruppen_names = ["G1", "G2", "G3", "G4"]
+            zeiten = {g: _default_zeiten_for(g) for g in gruppen_names}
+
+        turner  = {g: [] for g in gruppen_names}
         trainer = []
+        immer_springer = set()
         w2d     = {}
         for p in cfg.get("personen", []):
             ni = p.get("name_intern") or p.get("anzeige")
@@ -1293,6 +1396,8 @@ def apply_config_roster(sftp):
             w2d[key] = ni
             if p.get("rolle") == "trainer":
                 trainer.append(ni)
+                if p.get("immer_springer"):
+                    immer_springer.add(ni)
             elif p.get("rolle") == "turner":
                 g = p.get("gruppe")
                 turner.setdefault(g, []).append(ni)
@@ -1302,8 +1407,12 @@ def apply_config_roster(sftp):
         ALLE_TURNER        = turner
         ALLE_TRAINER       = trainer
         WEBSITE_TO_DISPLAY = w2d
+        GRUPPEN_ORDER      = gruppen_names
+        GRUPPEN_ZEITEN     = zeiten
+        IMMER_SPRINGER     = immer_springer
         print(f"[CONFIG] Roster aus config.json: "
-              f"{sum(len(v) for v in turner.values())} Turner, {len(trainer)} Trainer.")
+              f"{sum(len(v) for v in turner.values())} Turner, {len(trainer)} Trainer, "
+              f"{len(gruppen_names)} Gruppen, {len(immer_springer)} immer-Springer.")
     except Exception as e:
         print(f"[CONFIG] Fehler beim Aufbau ({e!r}).")
 
@@ -1314,20 +1423,20 @@ def require_server_roster():
     Fallback einspringen koennten -- ein leerer/kein Server-Zustand darf NICHT
     stillschweigend zu einem falschen/leeren Trainingsplan fuehren, sondern
     muss den Lauf klar abbrechen (siehe Vault: GitHub-Umzug, Phase 2)."""
-    if not any(ALLE_TURNER.values()) or not ALLE_TRAINER:
+    if not GRUPPEN_ORDER or not any(ALLE_TURNER.values()) or not ALLE_TRAINER:
         msg = ("Trainingsplan-Lauf abgebrochen: Roster konnte nicht von config/config.json "
                "geladen werden (leer oder nicht erreichbar). Es gibt keinen Namens-Fallback "
                "im Code mehr (Phase 2, 24.08.2026), damit die Automatik nie mit falschen/"
                "leeren Daten weiterlaeuft.")
         print(f"[FATAL] {msg}")
         try:
-            send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\n{msg}")
+            send_whatsapp(f"Hi, Cloude hier 🚨\n\n{msg}")
         except Exception:
             pass
         raise SystemExit(msg)
 
 
-def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, partial, ki=None):
+def build_admin_trainer_plan(absences, partial, grid_rows, grid_phase, trainer_roles_history=None, ki=None):
     """Admin-Plan: manuell im Admin-Bereich gesetzte Trainer-Zellen (fixed_trainer_partial)
     sind HARTE Vorgaben. Manuell belegte Trainer werden aus der Auto-Verteilung
     herausgenommen. Der REST wird um diese Vorgabe herum geplant - und zwar inklusive
@@ -1356,7 +1465,7 @@ def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, pa
         labels = {str(c[0]).strip() for c in partial[t]
                   if isinstance(c, (list, tuple)) and len(c) >= 2 and c[0]}
         for lab in labels:
-            norm = _ki_norm_merge(lab) or (lab if lab in ("G1", "G2", "G3", "G4") else None)
+            norm = _ki_norm_merge(lab) or (lab if lab in GRUPPEN_ORDER else None)
             if norm:
                 covered_groups.update(norm.split("+"))
 
@@ -1365,7 +1474,7 @@ def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, pa
     for t in committed + nulled:
         if t not in abs2["Trainer"]:
             abs2["Trainer"].append(t)
-    for g in covered_groups & {"G1", "G2", "G3", "G4"}:
+    for g in covered_groups & set(GRUPPEN_ORDER):
         existing = abs2.get(g, [])
         for name in ALLE_TURNER.get(g, []):
             if name not in existing:
@@ -1374,12 +1483,12 @@ def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, pa
 
     if ki.get("assign") or ki.get("merges"):
         try:
-            base, _s, _a = build_ki_einteilung(abs2, ki, geraet_1, geraet_2, g1_starts_geraet2)
+            base, _s, _a = build_ki_einteilung(abs2, ki, grid_rows, grid_phase, trainer_roles_history)
         except Exception as _e:
             print(f"[ADMIN] KI-Einteilung um Admin-Fix herum fehlgeschlagen ({_e!r}), Fallback Standard-Builder.")
-            base, _s, _a = build_trainer_plan(abs2, geraet_1, geraet_2, g1_starts_geraet2)
+            base, _s, _a = build_trainer_plan(abs2, grid_rows, grid_phase, trainer_roles_history=trainer_roles_history)
     else:
-        base, _s, _a = build_trainer_plan(abs2, geraet_1, geraet_2, g1_starts_geraet2)
+        base, _s, _a = build_trainer_plan(abs2, grid_rows, grid_phase, trainer_roles_history=trainer_roles_history)
     for t in committed:
         cells = partial[t]
         n = len(cells)
@@ -1447,7 +1556,7 @@ Regeln:
 - notiz_neu: Setze es bei JEDER Aenderung des Anmerkungs-TEXTES — hinzufuegen ("fuege hinzu ..."), loeschen ("loesche die Zeile ..."), umformulieren oder ersetzen ("aendere X zu Y"). Gib dann IMMER den KOMPLETTEN neuen Anmerkungstext des Ziel-Datums zurueck: bestehende Zeilen aus der Referenz uebernehmen und die Aenderung anwenden. Bei reinen Struktur-/Plan-Aktionen ohne Text-Aenderung notiz_neu = null.
 - WICHTIG: gruppe_entfall/timing/zuteilung/merges/geraete/reset NUR aus der AKTUELLEN Trainer-Anmerkung ableiten, NIEMALS aus der Referenz der aktuellen Anmerkungen.
 - abwesend_kinder / wieder_da_kinder: einzelne Kinder ab-/wieder anmelden (nur Namen aus der Kinderliste). abwesend_trainer: Trainer die fehlen.
-- einteilung: KOMPLETTE Zuordnung {Trainer: Label}, wenn die Anweisung Trainer den Gruppen zuordnet (z.B. "Andy G1, Noah G2, Cassian G4, Rest Springer"). Label = G1..G4, "GX+GY", "Springer" oder eigener Kurztext. Sonst {} = automatische Einteilung.
+- einteilung: KOMPLETTE Zuordnung {Trainer: Label}, wenn die Anweisung Trainer den Gruppen zuordnet (z.B. "Trainer A Gruppe 1, Trainer B Gruppe 2, Rest Springer"). Label = eine der konfigurierten Gruppen, "GX+GY" (mehrere Gruppen durch + verbunden) oder "Springer". Sonst {} = automatische Einteilung.
 - Antworte ausschliesslich mit dem JSON-Objekt."""
 
 def _ki_system_prompt(writer, next_date_str, current_notes=None):
@@ -1479,7 +1588,7 @@ def _ki_time_min(s):
             return h * 60 + mi
     return None
 
-def ki_timing_to_dict(timing_list):
+def ki_timing_to_dict(timing_list, grid_rows):
     out = {}
     for tm in (timing_list or []):
         name = _ki_full_name(tm.get("trainer", ""))
@@ -1487,7 +1596,7 @@ def ki_timing_to_dict(timing_list):
             continue
         kind = "spaet" if tm.get("richtung") == "spaet" else "frueh"
         t = _ki_time_min(tm.get("uhrzeit"))
-        blocked = compute_blocked_slots(kind, t)
+        blocked = compute_blocked_slots(kind, t, grid_rows)
         out[name] = {"kind": kind, "time_min": t,
                      "time_str": (f"{t//60:02d}:{t%60:02d}" if t is not None else None),
                      "notiz": "", "blocked": sorted(blocked)}
@@ -1523,92 +1632,70 @@ def ki_resolve_target(ziel, state):
     return active_training_date().strftime("%d.%m.%y")
 
 # ---- KI-Einteilung: Zusammenlegen / Zuteilen im Raster ----
-_KI_GRPCOL = {"G1": "g1_blau", "G2": "g1_gruen", "G3": "g2_orange", "G4": "g2_lila"}
-
-def _ki_label_cells(label):
-    if not label:
-        return None
-    lab = str(label).strip()
-    if lab.lower() == "springer":
-        return [("Aufbauen", "aufbauen"), ("Springer", "springer"), ("Springer", "springer"),
-                ("Springer", "springer"), ("Abbauen", "aufbauen")]
-    first = re.split(r'[+/ ]', lab)[0]
-    col = _KI_GRPCOL.get(first, "g1_blau")
-    return [(f"AW {lab}", "aufwaermen"), (lab, col), (lab, col), (lab, col), ("Abbauen", "aufbauen")]
 
 def _ki_norm_merge(label):
-    parts = [p for p in re.split(r'\+', str(label or "").replace(" ", "")) if p in ("G1", "G2", "G3", "G4")]
-    return "+".join(sorted(parts, key=lambda x: int(x[1]))) if len(parts) >= 2 else None
+    parts = [p for p in re.split(r'\+', str(label or "").replace(" ", "")) if p in GRUPPEN_ORDER]
+    if len(parts) < 2:
+        return None
+    return "+".join(sorted(parts, key=lambda g: GRUPPEN_ORDER.index(g)))
 
-def _merge_small_singletons(groups, present, min_kids=3):
-    """Legt zu kleine (<min_kids anwesende Kinder) benachbarte Einzelgruppen zusammen.
-    Bevorzugt gleiche Geraeteseite; die G2|G3-Grenze ist letzter Ausweg.
-    (Noah 16.07.2026: auch im KI-/Anmerkungs-Pfad automatisch mergen, z.B. G3<3 -> G3+G4.)"""
+def _merge_small_singletons(groups, present, gruppen_zeiten, min_kids=3):
+    """Legt zu kleine (<min_kids anwesende Kinder) benachbarte Einzelgruppen
+    zusammen -- nur wenn sie zeit-kompatibel sind (siehe zeiten_kompatibel).
+    Kein kompatibler Nachbar da -> Gruppe bleibt einzeln (Notlage-Fallback
+    statt eines unmoeglichen Merges)."""
     units = [[g] for g in groups]
     def cnt(u): return sum(present.get(g, 0) for g in u)
-    def crosses(a, b): return a[-1] == "G2" and b[0] == "G3"
+    def compatible(a, b): return all(zeiten_kompatibel(gruppen_zeiten, x, y) for x in a for y in b)
     changed = True
     while changed:
         changed = False
         for i, u in enumerate(units):
             if cnt(u) < min_kids and len(units) > 1:
-                cands = []
-                if i > 0: cands.append(i - 1)
-                if i < len(units) - 1: cands.append(i + 1)
-                best = None
-                for j in cands:
-                    a, b = (units[j], units[i]) if j < i else (units[i], units[j])
-                    sc = cnt(units[j]) + cnt(u) + (1000 if crosses(a, b) else 0)
-                    if best is None or sc < best[0]:
-                        best = (sc, j)
-                if best:
-                    j = best[1]; lo, hi = sorted((i, j))
-                    units[lo] = units[lo] + units[hi]; del units[hi]
-                    changed = True; break
+                cands = [j for j in (i - 1, i + 1) if 0 <= j < len(units) and compatible(u, units[j])]
+                if not cands:
+                    continue
+                best = min(cands, key=lambda j: cnt(units[j]) + cnt(u))
+                lo, hi = sorted((i, best))
+                units[lo] = units[lo] + units[hi]; del units[hi]
+                changed = True; break
     return units
 
 
-def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
-    """Isolierter Builder aus KI-Anweisungen (cancel/merges/assign) -> vollstaendiges Raster.
-    Entfallene Gruppen -> kein eigener Trainer (Trainer wird Springer)."""
+def build_ki_einteilung(absences, ki, grid_rows, grid_phase, trainer_roles_history=None):
+    """Isolierter Builder aus KI-Anweisungen (cancel/merges/assign) -> vollstaendiges
+    Raster. Entfallene Gruppen -> kein eigener Trainer (Trainer wird Springer).
+    Nutzt dieselbe Fairness-Funktion (_assign_units_fair) und denselben
+    Zellen-Builder (_cells_for_unit) wie der Standard-Pfad build_trainer_plan,
+    damit beide Pfade nie auseinanderlaufen koennen (siehe Farb-Kollisions-
+    Historie 12./19.08.2026 -- genau diese Art Duplizierung war die Ursache)."""
+    trainer_roles_history = trainer_roles_history or {}
     abwesend = set(absences.get("Trainer", []))
     available = [t for t in ALLE_TRAINER if t not in abwesend]
-    cancel = set(g for g in (ki.get("cancel") or []) if g in ("G1", "G2", "G3", "G4"))
-    for g in ("G1", "G2", "G3", "G4"):
+    cancel = set(g for g in (ki.get("cancel") or []) if g in GRUPPEN_ORDER)
+    for g in GRUPPEN_ORDER:
         tl = ALLE_TURNER.get(g, [])
         if tl and all(t in absences.get(g, []) for t in tl):
             cancel.add(g)
-    base_groups = [g for g in ("G1", "G2", "G3", "G4") if g not in cancel]
+    base_groups = [g for g in GRUPPEN_ORDER if g not in cancel]
+
+    def _compat(grps):
+        return all(zeiten_kompatibel(GRUPPEN_ZEITEN, x, y) for x in grps for y in grps)
 
     assign_raw = ki.get("assign") or []
     used_groups = set()
-    merge_units = []
+    merge_units = []   # (groups_set, forced_trainer_or_None)
     for a in assign_raw:
         tr = _ki_full_name(a.get("trainer", ""))
         lab = _ki_norm_merge(a.get("gruppe") or a.get("label") or "")
         if tr in available and lab:
             grps = set(lab.split("+")) & set(base_groups)
-            if len(grps) >= 2 and not (grps & used_groups):
+            if len(grps) >= 2 and not (grps & used_groups) and _compat(grps):
                 merge_units.append((grps, tr)); used_groups |= grps
     for mg in (ki.get("merges") or []):
         grps = set(g for g in (mg or []) if g in base_groups) - used_groups
-        if len(grps) >= 2:
+        if len(grps) >= 2 and _compat(grps):
             merge_units.append((grps, None)); used_groups |= grps
-
-    # G3+G4-Dauer-Zusammenlegung (siehe Toggle G3_G4_PERMANENT_MERGE oben):
-    # gilt auch im KI-/Anmerkungs-Pfad als Standard, AUSSER eine Anmerkung
-    # nennt G3 oder G4 explizit einzeln (z.B. "Fabian macht G3 alleine" oder
-    # ein cancel/merge, das G3/G4 schon anders verplant hat).
-    if G3_G4_PERMANENT_MERGE and {"G3", "G4"} <= set(base_groups) and not ({"G3", "G4"} & used_groups):
-        explicit_single = {
-            (a.get("gruppe") or a.get("label") or "").strip()
-            for a in assign_raw
-            if _ki_full_name(a.get("trainer", "")) in available
-            and "+" not in (a.get("gruppe") or a.get("label") or "")
-        }
-        if "G3" not in explicit_single and "G4" not in explicit_single:
-            merge_units.append(({"G3", "G4"}, None))
-            used_groups |= {"G3", "G4"}
 
     forced = {}
     for a in assign_raw:
@@ -1621,71 +1708,48 @@ def build_ki_einteilung(absences, ki, geraet_1, geraet_2, g1_starts_geraet2):
         elif rawlab in base_groups and rawlab not in used_groups:
             forced[tr] = rawlab; used_groups.add(rawlab)
 
-    units = []
+    units = []   # (label, forced_trainer_or_None, groups_list)
     for grps, tr in merge_units:
-        units.append(("+".join(sorted(grps, key=lambda x: int(x[1]))), tr))
-    # Uebrig gebliebene Einzelgruppen: zu kleine Gruppen (<3 anwesende Kinder) automatisch
-    # mit bestem Nachbarn zusammenlegen (wie im Standard-Pfad build_trainer_plan).
+        glist = sorted(grps, key=lambda g: GRUPPEN_ORDER.index(g))
+        units.append((unit_label(glist), tr, glist))
+    # Uebrig gebliebene Einzelgruppen: zu kleine Gruppen (<3 anwesende Kinder)
+    # automatisch mit einem zeit-kompatiblen Nachbarn zusammenlegen (wie im
+    # Standard-Pfad build_trainer_plan).
     present = {g: max(0, len(ALLE_TURNER.get(g, [])) - len(absences.get(g, [])))
-               for g in ("G1", "G2", "G3", "G4")}
+               for g in GRUPPEN_ORDER}
     leftover = [g for g in base_groups if g not in used_groups]
-    for grp_list in _merge_small_singletons(leftover, present):
-        lbl = "+".join(sorted(grp_list, key=lambda x: int(x[1])))
-        units.append((lbl, None))
-        for g in grp_list:
-            used_groups.add(g)
+    for grp_list in _merge_small_singletons(leftover, present, GRUPPEN_ZEITEN):
+        units.append((unit_label(grp_list), None, grp_list))
+        used_groups.update(grp_list)
 
+    unit_groups = {lab: grps for lab, _tr, grps in units}
     assign = dict(forced)
+    for lab, tr, _grps in units:
+        if tr:
+            assign[tr] = lab
     pool = [t for t in available if t not in assign]
-    open_units = []
-    for lab, tr in units:
-        if tr and tr in pool:
-            assign[tr] = lab; pool.remove(tr)
-        else:
-            open_units.append(lab)
-    # Zu wenige Trainer fuer die offenen Gruppen -> benachbart zusammenlegen (volle Abdeckung)
-    def _gnum(x):
-        return int(x[1]) if len(x) > 1 and x[1].isdigit() else 9
-    while len(open_units) > max(len(pool), 1) and len([u for u in open_units if "+" not in u]) >= 2:
-        _s = sorted([u for u in open_units if "+" not in u], key=_gnum)
-        _a, _b = _s[0], _s[1]
-        open_units.remove(_a); open_units.remove(_b)
-        open_units.append("+".join(sorted([_a, _b], key=_gnum)))
-    g4u = next((u for u in open_units if "G4" in u), None)
-    andy = next((t for t in pool if t.startswith("Andy")), None)
-    if andy and g4u:
-        assign[andy] = g4u; pool.remove(andy); open_units.remove(g4u)
-    noah = next((t for t in pool if t.startswith("Noah")), None)
-    ordered = ([noah] if noah else []) + [t for t in pool if t is not noah]
-    for lab in list(open_units):
-        if ordered:
-            tr = ordered.pop(0); assign[tr] = lab; open_units.remove(lab)
-    for t in ordered:
-        assign.setdefault(t, "Springer")
+    open_units = [lab for lab, tr, _g in units if not tr]
 
-    # Zellen mit korrekter Geraete-Rotation (Phasen-Farben wie Standard-Builder)
-    def _farbe(g, phase):
-        return geraet_farbe(g, phase, g1_starts_geraet2)
-    def _cells(label):
-        lab = str(label).strip()
-        if lab.lower() == "springer":
-            return [("Aufbauen","aufbauen"),("Springer","springer"),("Springer","springer"),("Springer","springer"),("Abbauen","aufbauen")]
-        if lab == "G4":
-            _g4s3, _g4s4 = geraet_farbe_g4(g1_starts_geraet2)
-            return [("Aufbauen","aufbauen"),("AW G4","aufwaermen"),("AW G4","aufwaermen"),("G4",_g4s3),("G4",_g4s4)]
-        if "+" not in lab and lab in ("G1","G2","G3"):
-            return [("AW "+lab,"aufwaermen"),(lab,_farbe(lab,1)),(lab,_farbe(lab,1)),(lab,_farbe(lab,2)),("Abbauen","aufbauen")]
-        # Zusammengelegte Einheit (z.B. "G1+G2", "G3+G4"): Farbe von der Referenz-
-        # Gruppe uebernehmen statt von einem Listen-Index abhaengigen Hartcode
-        # (Bugfix 19.08.2026 - siehe _merged_ref_group()/Vault "Geräte-Farben-Kollision").
-        _parts = [p for p in re.split(r'[+/]', lab) if p in ("G1", "G2", "G3", "G4")]
-        _ref = _merged_ref_group(_parts) if _parts else "G3"
-        c1, c2 = _farbe(_ref, 1), _farbe(_ref, 2)
-        return [("AW "+lab,"aufwaermen"),(lab,c1),(lab,c1),(lab,c2),("Abbauen","aufbauen")]
-    TRAINER_PLAN = {t: (_cells(assign[t]) if t in assign else None) for t in ALLE_TRAINER}
+    fair_assign, springers = _assign_units_fair(open_units, pool, trainer_roles_history, IMMER_SPRINGER)
+    assign.update(fair_assign)
+
+    TRAINER_PLAN = {}
+    for t in ALLE_TRAINER:
+        if t in assign:
+            lab = assign[t]
+            if lab == "Springer":
+                TRAINER_PLAN[t] = _springer_cells(grid_rows)
+            else:
+                groups = unit_groups.get(lab) or [p for p in lab.split("+") if p in GRUPPEN_ORDER] or [lab]
+                TRAINER_PLAN[t] = _cells_for_unit(lab, groups, grid_rows, grid_phase)
+        elif t in springers:
+            TRAINER_PLAN[t] = _springer_cells(grid_rows)
+        else:
+            TRAINER_PLAN[t] = None
     anm = []
-    if open_units:
-        anm.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(open_units))
+    unfilled = [lab for lab in open_units if lab not in fair_assign]
+    if unfilled:
+        anm.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(unfilled))
     return TRAINER_PLAN, {}, anm
 
 def _ki_kid(name):
@@ -1741,13 +1805,28 @@ def _merge_ki_assign(existing, new):
 #
 # Erweiterbar: neues Regex + Handler unten in COMMAND_PATTERNS ergaenzen.
 
-_TRAINER_FIRSTNAMES = ["Noah", "Andy", "Fabian", "Cassian", "Julian", "Torben"]
+# Trainer-Vornamen und Gruppennamen kommen seit dem Gruppenzeiten-Umbau
+# ausschliesslich aus der zur Laufzeit geladenen Config (ALLE_TRAINER/
+# GRUPPEN_ORDER) -- keine hartkodierte Namensliste mehr im (oeffentlichen)
+# Repo. Die Regexe werden deshalb erst NACH apply_config_roster() bei Bedarf
+# gebaut (Aufrufhaeufigkeit: wenige Anmerkungen pro Lauf, unkritisch).
 
 def _first_to_full(first):
     for full in ALLE_TRAINER:
         if full.split()[0].lower() == first.lower():
             return full
     return None
+
+def _resolve_group_name(tok):
+    """Loest ein rohes Token gegen die aktuell konfigurierten Gruppennamen
+    auf (case-insensitive). Gruppen sind frei benennbar (Noah kann sie im
+    Admin-Bereich umbenennen/entfernen), deshalb keine 'GN'-Digit-Annahme."""
+    lower_map = {g.lower(): g for g in GRUPPEN_ORDER}
+    return lower_map.get((tok or "").strip().lower())
+
+def _name_alt(names):
+    ordered = sorted({n for n in names if n}, key=len, reverse=True)
+    return "|".join(re.escape(n) for n in ordered)
 
 _RE_RESET = re.compile(
     r'^\s*(?:'
@@ -1758,56 +1837,52 @@ _RE_RESET = re.compile(
     re.IGNORECASE,
 )
 
-_RE_TRAINER_ROLE = re.compile(
-    r'^\s*(?P<name>' + '|'.join(_TRAINER_FIRSTNAMES) + r')'
-    r'\s+(?:macht\s+|ist\s+|:\s*)?'
-    r'(?P<lab>Springer|Gruppe\s*[1-4](?:\s*\+\s*(?:Gruppe\s*)?[1-4])?|G[1-4](?:\s*\+\s*G?[1-4])?)'
-    r'\s*[.!]?\s*$',
-    re.IGNORECASE,
-)
+def _re_trainer(suffix_pattern):
+    """Baut 'ein Trainer-Vorname gefolgt von <suffix_pattern>' aus der aktuell
+    geladenen Trainerliste. None, wenn (noch) kein Roster geladen ist."""
+    firsts = _name_alt(t.split()[0] for t in ALLE_TRAINER if t)
+    if not firsts:
+        return None
+    return re.compile(r'^\s*(?P<name>' + firsts + r')' + suffix_pattern + r'\s*[.!]?\s*$', re.IGNORECASE)
 
-_RE_TRAINER_ABSENT = re.compile(
-    r'^\s*(?P<name>' + '|'.join(_TRAINER_FIRSTNAMES) + r')'
-    r'\s+(?:ist\s+)?(?:abwesend|nicht\s+da|fehlt|kann\s+nicht|f(?:ae|ä)llt\s+aus)'
-    r'\s*[.!]?\s*$',
-    re.IGNORECASE,
-)
+def _re_trainer_role():
+    return _re_trainer(r'\s+(?:macht\s+|ist\s+|:\s*)?(?P<lab>Springer|[\wÄÖÜäöüß]+(?:\s*\+\s*[\wÄÖÜäöüß]+)*)')
 
-_RE_TRAINER_PRESENT = re.compile(
-    r'^\s*(?P<name>' + '|'.join(_TRAINER_FIRSTNAMES) + r')'
-    r'\s+(?:ist\s+)?(?:anwesend|wieder\s+da|kommt(?:\s+doch)?|doch\s+da)'
-    r'\s*[.!]?\s*$',
-    re.IGNORECASE,
-)
+def _re_trainer_absent():
+    return _re_trainer(r'\s+(?:ist\s+)?(?:abwesend|nicht\s+da|fehlt|kann\s+nicht|f(?:ae|ä)llt\s+aus)')
+
+def _re_trainer_present():
+    return _re_trainer(r'\s+(?:ist\s+)?(?:anwesend|wieder\s+da|kommt(?:\s+doch)?|doch\s+da)')
 
 _RE_GRUPPE_ENTFALL = re.compile(
-    r'^\s*(?:Gruppe\s*)?G?(?P<g>[1-4])\s+(?:entf(?:ae|ä)llt|f(?:ae|ä)llt\s+aus)\s*[.!]?\s*$',
+    r'^\s*(?P<g>[\wÄÖÜäöüß]+)\s+(?:entf(?:ae|ä)llt|f(?:ae|ä)llt\s+aus)\s*[.!]?\s*$',
     re.IGNORECASE,
 )
 
 _RE_MERGE = re.compile(
-    r'^\s*(?:Gruppe\s*)?G?(?P<a>[1-4])\s*(?:\+|und|u\.)\s*(?:Gruppe\s*)?G?(?P<b>[1-4])'
+    r'^\s*(?P<a>[\wÄÖÜäöüß]+?)\s*(?:\+|und|u\.)\s*(?P<b>[\wÄÖÜäöüß]+?)'
     r'\s+(?:zusammenlegen|zusammen|gemeinsam)\s*[.!]?\s*$',
     re.IGNORECASE,
 )
 
 def _norm_group_label(lab):
-    """'g1', 'Gruppe 1', 'G3+G4', 'gruppe 3+4', 'Springer' -> kanonisch."""
+    """'G1', 'g1+g2', 'Springer' -> kanonisch, gegen GRUPPEN_ORDER aufgeloest
+    (keine 'GN'-Digit-Annahme mehr -- Gruppen sind frei benennbar)."""
     s = lab.strip()
     if re.match(r'^\s*springer\s*$', s, re.IGNORECASE):
         return "Springer"
     parts = re.split(r'\s*\+\s*', s)
     out = []
     for p in parts:
-        m = re.match(r'^\s*(?:gruppe\s*)?g?\s*([1-4])\s*$', p, re.IGNORECASE)
-        if not m:
+        real = _resolve_group_name(p)
+        if not real:
             return None
-        out.append("G" + m.group(1))
+        out.append(real)
     if not out:
         return None
     if len(out) == 1:
         return out[0]
-    return "+".join(sorted(out, key=lambda x: int(x[1])))
+    return "+".join(sorted(out, key=lambda g: GRUPPEN_ORDER.index(g)))
 
 def _parse_command_line(line):
     """Versucht, EINE Anmerkungs-Zeile als bekanntes Kommando zu erkennen.
@@ -1817,30 +1892,35 @@ def _parse_command_line(line):
         return None
     if _RE_RESET.match(s):
         return {"typ": "reset"}
-    m = _RE_TRAINER_ROLE.match(s)
+    re_role = _re_trainer_role()
+    m = re_role.match(s) if re_role else None
     if m:
         full = _first_to_full(m.group("name"))
         lab = _norm_group_label(m.group("lab"))
         if full and lab:
             return {"typ": "assign", "trainer": full, "gruppe": lab}
-    m = _RE_TRAINER_ABSENT.match(s)
+    re_abs = _re_trainer_absent()
+    m = re_abs.match(s) if re_abs else None
     if m:
         full = _first_to_full(m.group("name"))
         if full:
             return {"typ": "trainer_abwesend", "trainer": full}
-    m = _RE_TRAINER_PRESENT.match(s)
+    re_pres = _re_trainer_present()
+    m = re_pres.match(s) if re_pres else None
     if m:
         full = _first_to_full(m.group("name"))
         if full:
             return {"typ": "trainer_anwesend", "trainer": full}
     m = _RE_GRUPPE_ENTFALL.match(s)
     if m:
-        return {"typ": "gruppe_entfall", "gruppe": "G" + m.group("g")}
+        g = _resolve_group_name(m.group("g"))
+        if g:
+            return {"typ": "gruppe_entfall", "gruppe": g}
     m = _RE_MERGE.match(s)
     if m:
-        a, b = "G" + m.group("a"), "G" + m.group("b")
-        if a != b:
-            return {"typ": "merge", "gruppen": sorted([a, b], key=lambda x: int(x[1]))}
+        a, b = _resolve_group_name(m.group("a")), _resolve_group_name(m.group("b"))
+        if a and b and a != b:
+            return {"typ": "merge", "gruppen": sorted([a, b], key=lambda g: GRUPPEN_ORDER.index(g))}
     return None
 
 def _apply_command(cmd, fe):
@@ -1861,7 +1941,8 @@ def _apply_command(cmd, fe):
         existing.append({"trainer": cmd["trainer"], "gruppe": cmd["gruppe"]})
         ki["assign"] = existing
     elif typ == "merge":
-        ex = [tuple(sorted(m, key=lambda x: int(x[1]))) for m in (ki.get("merges") or [])]
+        ex = [tuple(sorted(m, key=lambda g: GRUPPEN_ORDER.index(g) if g in GRUPPEN_ORDER else 99))
+              for m in (ki.get("merges") or [])]
         new = tuple(cmd["gruppen"])
         if new not in ex:
             ex.append(new)
@@ -2103,7 +2184,9 @@ def main():
     print(f"\nNaechstes Training: {wtag} {datum} ({days_away} Tage)\n")
 
     # Abwesenheiten und Hash berechnen
-    absences, late_notes, trainer_timing = get_absences(abmeldungen, training_date)
+    tag = tag_of_date(training_date)
+    grid_rows, grid_phase = compute_time_grid(GRUPPEN_ZEITEN, tag)
+    absences, late_notes, trainer_timing = get_absences(abmeldungen, training_date, grid_rows)
     late_notes = late_notes + timing_annotations(trainer_timing)
     # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
     new_hash = raw_abm_hash
@@ -2159,7 +2242,7 @@ def main():
         save_state(sftp, state)
         if not _was_published:
             send_whatsapp(
-            f"Hi Noah, Cloude hier ⚠️\n\n"
+            f"Hi, Cloude hier ⚠️\n\n"
             f"Das Training am {wtag}, {datum} ist als Trainingsentfall markiert.\n"
             f"Ich habe den Entfall-Hinweis veröffentlicht und erstelle KEINEN normalen Plan."
         )
@@ -2179,7 +2262,7 @@ def main():
 
     # -- KI-Timing (aus Anmerkung) in trainer_timing mergen -> in allen Pfaden rot geblockt --
     try:
-        for _kn, _kv in ki_timing_to_dict((fixed_for_date.get("ki") or {}).get("timing")).items():
+        for _kn, _kv in ki_timing_to_dict((fixed_for_date.get("ki") or {}).get("timing"), grid_rows).items():
             trainer_timing[_kn] = _kv
     except Exception:
         pass
@@ -2190,32 +2273,22 @@ def main():
     if fixed_for_date.get("manuell_bearbeitet"):
         import hashlib as _hl
         admin_fixed_hash = _hl.md5(json.dumps(fixed_for_date, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
-        # Geraete/Rotation KONSISTENT zur eigentlichen Generierung bestimmen:
-        # explizit gesetzte Geraete nutzen, sonst die KORREKTE Rotation fuer diesen Tag
-        # (NICHT stumpf Boden/Barren) -> KI-/Admin-Plaene haben immer die richtigen Geraete.
-        try:
-            _ridx, _rg1s = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
-            _rg1, _rg2 = GERAETE_ROTATION[_ridx]
-        except Exception:
-            _rg1, _rg2, _rg1s = "Boden", "Barren", state.get("g1_starts_geraet2", False)
-        _g1 = fixed_for_date.get("geraet_1") or _rg1
-        _g2 = fixed_for_date.get("geraet_2") or _rg2
-        _g1s = fixed_for_date.get("g1_starts_geraet2", _rg1s)
         _ki = fixed_for_date.get("ki") or {}
         _partial = fixed_for_date.get("fixed_trainer_partial") or {}
+        _troles_hist = _load_trainer_roles_history(state, exclude_date=datum_kurz)
         if _partial:
             # Bugfix 19.08.2026 (Noah): Admin-Zellen sind eine harte Vorgabe, die KI/
             # Kommando-Anweisungen (ki.assign/merges) planen - falls vorhanden - den
             # Rest drumherum, statt komplett ignoriert zu werden (siehe build_admin_trainer_plan).
-            _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, _partial, ki=_ki)
+            _base_tp = build_admin_trainer_plan(absences, _partial, grid_rows, grid_phase, trainer_roles_history=_troles_hist, ki=_ki)
         elif _ki.get("assign") or _ki.get("merges"):
             try:
-                _base_tp, _sd, _ka = build_ki_einteilung(absences, _ki, _g1, _g2, _g1s)
+                _base_tp, _sd, _ka = build_ki_einteilung(absences, _ki, grid_rows, grid_phase, _troles_hist)
             except Exception as _kierr:
                 print(f"[KI] Einteilung fehlgeschlagen, Fallback build_admin: {_kierr}")
-                _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, _partial, ki=_ki)
+                _base_tp = build_admin_trainer_plan(absences, _partial, grid_rows, grid_phase, trainer_roles_history=_troles_hist, ki=_ki)
         else:
-            _base_tp = build_admin_trainer_plan(absences, _g1, _g2, _g1s, _partial, ki=_ki)
+            _base_tp = build_admin_trainer_plan(absences, _partial, grid_rows, grid_phase, trainer_roles_history=_troles_hist, ki=_ki)
         fixed_for_date["fixed_trainer_plan"] = _base_tp
         fixed_for_date["lock_trainer_plan"] = True
         lock_trainer = True
@@ -2247,7 +2320,7 @@ def main():
             # Plan ohne gespeicherten Hash (manuell erstellt oder erste Initialisierung)
             # → Plan mit AKTUELLEN Abwesenheiten NEU ERSTELLEN (nicht nur Hash speichern)
             print(f"Plan ohne Hash fuer {datum_kurz} → Plan wird mit aktuellen Abwesenheiten erstellt.")
-            _ng_idx, _ng_g1s = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
+            _ng_idx = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
             geraet_combo = GERAETE_ROTATION[_ng_idx]
             # plan_data mit Defaults initialisieren und stored_hash="" setzen
             # damit die Update-Logik unten sicher ausgeführt wird
@@ -2257,7 +2330,6 @@ def main():
                 "stored_absences":  {},
                 "geraet_1":         geraet_combo[0],
                 "geraet_2":         geraet_combo[1],
-                "g1_starts_geraet2": _ng_g1s,
             }
             state.setdefault("plan_data", {})[datum_kurz] = plan_data
             if datum_kurz not in state.get("generated_plans", []):
@@ -2304,7 +2376,6 @@ def main():
 
         geraet_1     = plan_data["geraet_1"]
         geraet_2     = plan_data["geraet_2"]
-        g1_starts_g2 = plan_data["g1_starts_geraet2"]
 
         issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
         # Bei gesperrtem Trainer-Plan: Trainer-Anzahl-Fehler ignorieren
@@ -2327,10 +2398,10 @@ def main():
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (UPDATE).")
         else:
-            _prev_roles = _load_previous_trainer_roles(state, exclude_date=datum_kurz)
+            _troles_hist = _load_trainer_roles_history(state, exclude_date=datum_kurz)
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing,
-                prev_trainer_roles=_prev_roles,
+                absences, grid_rows, grid_phase, trainer_timing,
+                trainer_roles_history=_troles_hist,
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
@@ -2365,10 +2436,11 @@ def main():
             trainer_plan=trainer_plan,
             sondertiming=sondertiming,
             anmerkungen=anmerkungen,
+            grid_rows=grid_rows,
         )
         upload_pdf(sftp, pdf_path, datum_kurz)
         upload_xlsx(sftp, xlsx_path, datum_kurz)
-        aktuell_json = build_aktuell_json(datum, datum_kurz, wtag, geraet_1, geraet_2, trainer_plan, absences)
+        aktuell_json = build_aktuell_json(datum, datum_kurz, wtag, geraet_1, geraet_2, trainer_plan, absences, grid_rows)
         upload_aktuell_json(sftp, aktuell_json)
 
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
@@ -2462,15 +2534,14 @@ def main():
 
         # Geräte-Rotation: letzte (bis zu) 8 ECHTEN Trainings ansehen, ausgefallene
         # ignorieren und genau einen Schritt weiterrücken (robust gegen Drift).
-        new_combo_idx, g1_starts_g2 = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
+        new_combo_idx = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
 
         # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
         if lock_trainer and fixed_for_date.get("geraet_1"):
             geraet_1     = fixed_for_date["geraet_1"]
             geraet_2     = fixed_for_date["geraet_2"]
-            g1_starts_g2 = fixed_for_date.get("g1_starts_geraet2", g1_starts_g2)
-            print(f"[FIXED] Geräte aus fixed_entries: {geraet_1} + {geraet_2}, G1 starts G2: {g1_starts_g2}")
+            print(f"[FIXED] Geräte aus fixed_entries: {geraet_1} + {geraet_2}")
 
         # Kurze Hinweise sammeln -> am Ende EINE konsolidierte Mail statt mehrerer
         hinweise = []
@@ -2497,10 +2568,10 @@ def main():
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
             print("[FIXED] Verwende gesperrten Trainer-Plan aus fixed_entries (NEW).")
         else:
-            _prev_roles = _load_previous_trainer_roles(state, exclude_date=datum_kurz)
+            _troles_hist = _load_trainer_roles_history(state, exclude_date=datum_kurz)
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, geraet_1, geraet_2, g1_starts_g2, trainer_timing,
-                prev_trainer_roles=_prev_roles,
+                absences, grid_rows, grid_phase, trainer_timing,
+                trainer_roles_history=_troles_hist,
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
             trainer_plan = apply_timing_blocks(trainer_plan, trainer_timing)
@@ -2537,11 +2608,12 @@ def main():
             trainer_plan=trainer_plan,
             sondertiming=sondertiming,
             anmerkungen=anmerkungen,
+            grid_rows=grid_rows,
         )
 
         upload_pdf(sftp, pdf_path, datum_kurz)
         upload_xlsx(sftp, xlsx_path, datum_kurz)
-        aktuell_json = build_aktuell_json(datum, datum_kurz, wtag, geraet_1, geraet_2, trainer_plan, absences)
+        aktuell_json = build_aktuell_json(datum, datum_kurz, wtag, geraet_1, geraet_2, trainer_plan, absences, grid_rows)
         upload_aktuell_json(sftp, aktuell_json)
 
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
@@ -2550,7 +2622,6 @@ def main():
         # State aktualisieren
         state["last_training_date"] = datum
         state["geraet_combo_index"] = new_combo_idx
-        state["g1_starts_geraet2"]  = g1_starts_g2
         state.setdefault("generated_plans", []).append(datum_kurz)
         state.setdefault("plan_data", {})[datum_kurz] = {
             "absences_hash":    new_hash,
@@ -2559,7 +2630,6 @@ def main():
             "stored_absences":  absences,
             "geraet_1":         geraet_1,
             "geraet_2":         geraet_2,
-            "g1_starts_geraet2": g1_starts_g2,
             "late_notes_sent":  list(late_notes),            # bereits gesendet beim Erstellen
             "warnings_sent":    [k for k, _ in soft_warnings],  # bereits gesendet beim Erstellen
             "anm_notified_ids": [a["id"] for a in anmerkungen_server if a.get("id")],  # bereits gemeldet
