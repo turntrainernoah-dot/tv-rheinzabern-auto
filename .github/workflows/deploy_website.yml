@@ -1,0 +1,95 @@
+# Website vom iPad aus deployen
+# =============================
+# Dieser Workflow liegt bewusst im OEFFENTLICHEN Repo tv-rheinzabern-auto.
+# Grund: Oeffentliche Repos haben unbegrenzte GitHub-Actions-Minuten. Die
+# Website-Repos sind privat und koennen deshalb bis zum 1. September nicht
+# selbst deployen (Monatskontingent aufgebraucht). Von hier aus geht es.
+#
+# SO BENUTZT DU IHN (geht vom iPad, Handy oder PC):
+#   Actions -> "Website deployen" -> "Run workflow"
+#   -> Website auswaehlen -> Trockenlauf erst auf true -> Ergebnis pruefen
+#   -> danach nochmal mit Trockenlauf false
+#
+# SICHERHEIT:
+#   Der Workflow laeuft NUR auf ausdrueckliches Auslesen (workflow_dispatch),
+#   nie automatisch. Die Zugangsdaten liegen als Actions-Secrets und sind auch
+#   in einem oeffentlichen Repo nicht auslesbar. Er ueberträgt ausschliesslich,
+#   was die Erlaubnisliste im deploy.py des jeweiligen Repos zulaesst -
+#   config.php, Datenbanken und hochgeladene Dateien sind dort ausgeschlossen.
+
+name: Website deployen
+
+on:
+  workflow_dispatch:
+    inputs:
+      website:
+        description: "Welche Website?"
+        type: choice
+        required: true
+        options:
+          - tv-belege
+          - tv-spiele
+          - tv-wogele2026
+          - tv-trainerportal
+          - familie-website
+      dry_run:
+        description: "Trockenlauf (nur auflisten, nichts hochladen)"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Ziel bestimmen
+        id: ziel
+        run: |
+          case "${{ inputs.website }}" in
+            tv-belege)        echo "pfad=/belege" >> $GITHUB_OUTPUT ;;
+            tv-spiele)        echo "pfad=/spiele" >> $GITHUB_OUTPUT ;;
+            tv-wogele2026)    echo "pfad=/wogele2026" >> $GITHUB_OUTPUT ;;
+            tv-trainerportal) echo "pfad=/" >> $GITHUB_OUTPUT ;;
+            familie-website)  echo "pfad=/familievlklv56j1b" >> $GITHUB_OUTPUT ;;
+            *) echo "Unbekannte Website"; exit 1 ;;
+          esac
+          echo "Website ${{ inputs.website }} -> Serverordner $(grep -o '/.*' <<< "$(cat $GITHUB_OUTPUT | tail -1)")"
+
+      - name: Website-Repo holen
+        uses: actions/checkout@v4
+        with:
+          repository: turntrainernoah-dot/${{ inputs.website }}
+          token: ${{ secrets.REPO_READ_TOKEN }}
+          path: site
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: paramiko installieren
+        run: pip install --quiet paramiko
+
+      - name: Deploy ausfuehren
+        working-directory: site
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_PATH: ${{ steps.ziel.outputs.pfad }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ ! -f .github/scripts/deploy.py ]; then
+            echo "FEHLER: ${{ inputs.website }} hat kein .github/scripts/deploy.py"
+            exit 1
+          fi
+          python .github/scripts/deploy.py
+
+      - name: Hinweis
+        if: ${{ inputs.dry_run }}
+        run: echo "Das war ein Trockenlauf - es wurde nichts uebertragen. Fuer den echten Deploy nochmal starten und Trockenlauf auf false setzen."
