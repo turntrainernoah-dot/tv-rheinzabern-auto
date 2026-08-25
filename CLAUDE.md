@@ -81,12 +81,24 @@ Dieser Abschnitt gilt für **alle** Repos und für den lokalen Ordner `C:\Claude
 ### 5. Deploy und Datenfluss
 
 ```
-iPad / PC  →  Repo (Code)  →  GitHub Actions  →  Server (Code + Daten)
-                                                        ↓
-                                              tv-backups (verschlüsselt)
+Code:    iPad / PC  →  Repo  →  Deploy  →  Server
+Daten:                          bleiben ausschliesslich auf dem Server
+Backup:  Server  →  PC   (manuell, "Server-Backup ziehen.bat" auf dem Desktop)
 ```
 
-Zurückrollen per `git revert` gilt **nur für Code**. Daten liegen ausschließlich auf dem Server und werden über `tv-backups` gesichert.
+**Deploy** laeuft normalerweise ueber GitHub Actions bei einem Push auf `main`. Solange
+Actions in privaten Repos gesperrt sind, geht es mit `Aktiv\deploy_belege.py` auch lokal
+per SFTP. Beide Wege nutzen dieselbe Erlaubnisliste und fassen `config.php`, `data/` und
+`uploads/` niemals an.
+
+**Backups laufen ausschliesslich manuell.** Ein automatisches Backup ueber GitHub Actions
+war vorbereitet und wurde am 25.08.2026 auf Noahs ausdruecklichen Wunsch wieder entfernt:
+Die Belege-Datenbank enthaelt IBANs, die Familienwebsite private Daten — diese sollen
+grundsaetzlich nicht bei GitHub liegen, auch nicht verschluesselt. Nicht ohne Ruecksprache
+wieder einbauen.
+
+Zurueckrollen per `git revert` gilt **nur fuer Code**. Fuer Daten gibt es keinen
+Repo-Rueckweg — dafuer zaehlt allein das manuell gezogene Server-Backup.
 
 ### 6. Stand und offene Punkte
 
