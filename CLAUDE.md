@@ -87,10 +87,26 @@ Daten:                          bleiben ausschliesslich auf dem Server
 Backup:  Server  →  PC   (manuell, "Server-Backup ziehen.bat" auf dem Desktop)
 ```
 
-**Deploy** laeuft normalerweise ueber GitHub Actions bei einem Push auf `main`. Solange
-Actions in privaten Repos gesperrt sind, geht es mit `Aktiv\deploy_belege.py` auch lokal
-per SFTP. Beide Wege nutzen dieselbe Erlaubnisliste und fassen `config.php`, `data/` und
-`uploads/` niemals an.
+**Deploy geht jederzeit — auch vom iPad, auch vor dem 1. September.**
+
+Der Weg fuehrt ueber das OEFFENTLICHE Repo `tv-rheinzabern-auto`, weil dort die
+Actions-Minuten unbegrenzt sind (die privaten Repos koennen bis zum 1. September nicht
+selbst deployen, Monatskontingent aufgebraucht):
+
+    github.com -> Repo tv-rheinzabern-auto -> Actions
+    -> Workflow "Website deployen" -> "Run workflow"
+    -> Website auswaehlen, "Trockenlauf" zuerst auf true
+    -> Liste pruefen, dann nochmal mit Trockenlauf false
+
+Der Workflow holt das jeweilige private Repo und fuehrt dessen
+`.github/scripts/deploy.py` aus — dieselbe Erlaubnisliste wie immer. Am 25.08.2026 mit
+`tv-belege` real getestet: 61 Dateien uebertragen, Seite danach HTTP 200, Datenbank
+unveraendert.
+
+Zwei weitere Wege, falls noetig: lokal vom PC mit `Aktiv\deploy_belege.py`, oder ab dem
+1. September der Workflow im Repo selbst (dort ist der Push-Ausloeser auskommentiert,
+bis der Weg einmal getestet wurde). Alle drei nutzen dieselbe Erlaubnisliste und fassen
+`config.php`, `data/` und `uploads/` niemals an.
 
 **Backups laufen ausschliesslich manuell.** Ein automatisches Backup ueber GitHub Actions
 war vorbereitet und wurde am 25.08.2026 auf Noahs ausdruecklichen Wunsch wieder entfernt:
