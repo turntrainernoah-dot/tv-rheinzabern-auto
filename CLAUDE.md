@@ -98,6 +98,12 @@ selbst deployen, Monatskontingent aufgebraucht):
     -> Website auswaehlen, "Trockenlauf" zuerst auf true
     -> Liste pruefen, dann nochmal mit Trockenlauf false
 
+**Wenn der Workflow abbricht mit "ungemergte Arbeit":** Dann liegt fertiger Code auf
+einem anderen Branch und wuerde NICHT mit hochgeladen. Der Workflow nennt die Branches.
+Entweder nach `main` mergen, oder den Workflow mit diesem Branch als Ziel starten. Diese
+Pruefung existiert, weil am 25.08.2026 ein Deploy "erfolgreich" durchlief und trotzdem
+den alten Stand hochlud — die fertigen Aenderungen lagen auf einem nie gemergten Branch.
+
 Der Workflow holt das jeweilige private Repo und fuehrt dessen
 `.github/scripts/deploy.py` aus — dieselbe Erlaubnisliste wie immer. Am 25.08.2026 mit
 `tv-belege` real getestet: 61 Dateien uebertragen, Seite danach HTTP 200, Datenbank
