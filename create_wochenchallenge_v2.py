@@ -22,6 +22,15 @@ from openpyxl.utils import get_column_letter
 #  CONFIG - NUR DIESEN BLOCK ANPASSEN
 # ===================================================================
 
+# Phase 2 (24.08.2026): dieser CONFIG-Block wird bei JEDEM echten Lauf von
+# auto_wochenchallenge.py::replace_config_block() vollstaendig mit Daten aus
+# config/config.json + config/name_aliases.json (geschuetzter Server-Ordner)
+# ueberschrieben, bevor das Skript ausgefuehrt wird (siehe build_config_block()/
+# replace_config_block() dort) -- die Werte unten sind NIE die, die live
+# verwendet werden, sondern nur ein Platzhalter-Beispiel fuer den manuellen/
+# eigenstaendigen Test dieses Skripts. Deshalb bewusst mit erfundenen
+# Platzhalternamen statt echten Kindernamen befuellt.
+
 START_DATUM = "06.06.2026"   # Samstag der Woche (TT.MM.JJJJ)
 END_DATUM   = "09.06.2026"   # Dienstag der Woche
 
@@ -29,44 +38,51 @@ END_DATUM   = "09.06.2026"   # Dienstag der Woche
 TAGE_HEADER = ["Sa\n06.06.", "So\n07.06.", "Mo\n08.06.", "Di\n09.06."]
 
 # Trainings: Name -> Liste der Tage (0=Sa, 1=So, 2=Mo, 3=Di)
+# Platzhalter-Beispieldaten (siehe Hinweis oben) -- KEINE echten Namen.
 GRUPPEN = {
     "G1": {
-        "Felix":    [0, 1, 2, 3],
-        "Finn":     [0, 1, 2],
-        "Sinan":    [],
-        "Ilyas":    [0, 1, 2, 3],
-        "Jonathan": [1, 2, 3],
-        "Hannes":   [1, 3],
-        "Ben G1":   [0, 1, 2, 3],
+        "Kind G1-A": [0, 1, 2, 3],
+        "Kind G1-B": [0, 1, 2],
+        "Kind G1-C": [],
+        "Kind G1-D": [0, 1, 2, 3],
+        "Kind G1-E": [1, 2, 3],
+        "Kind G1-F": [1, 3],
+        "Kind G1-G": [0, 1, 2, 3],
     },
     "G2": {
-        "Henry":  [0, 1, 2, 3],
-        "Matti":  [0, 1, 2, 3],
-        "Levent": [0, 1, 2, 3],
-        "Caius":  [0, 1, 2, 3],
+        "Kind G2-A": [0, 1, 2, 3],
+        "Kind G2-B": [0, 1, 2, 3],
+        "Kind G2-C": [0, 1, 2, 3],
+        "Kind G2-D": [0, 1, 2, 3],
     },
     "G3": {
-        "Artem":   [1, 2],
-        "Finn":    [0, 1, 2, 3],
-        "Ben G3":  [2],
-        "Erik":    [0, 1, 3],
-        "Michael": [0, 1, 3],
+        "Kind G3-A": [1, 2],
+        "Kind G3-B": [0, 1, 2, 3],
+        "Kind G3-C": [2],
+        "Kind G3-D": [0, 1, 3],
+        "Kind G3-E": [0, 1, 3],
     },
     "G4": {
-        "Felix": [],
-        "Mika":  [0, 2, 3],
-        "Anton": [],
+        "Kind G4-A": [],
+        "Kind G4-B": [0, 2, 3],
+        "Kind G4-C": [],
     },
 }
 
-# Vorherige Gesamtpunkte (Stand vor dieser Woche)
+# Vorherige Gesamtpunkte (Stand vor dieser Woche) -- Platzhalter, siehe oben.
 VORHERIGE_PUNKTE = {
-    "G1_Felix": 4, "G1_Finn": 0, "G1_Sinan": 0,
-    "G1_Ilyas": 4, "G1_Jonathan": 4, "G1_Hannes": 3, "G1_Ben G1": 0,
-    "G2_Henry": 4, "G2_Matti": 4, "G2_Levent": 4, "G2_Caius": 4,
-    "G3_Artem": 0, "G3_Finn": 0, "G3_Ben G3": 1, "G3_Erik": 0, "G3_Michael": 0,
-    "G4_Felix": 3, "G4_Mika": 18, "G4_Anton": 3,
+    "G1_Kind G1-A": 4, "G1_Kind G1-B": 0, "G1_Kind G1-C": 0,
+    "G1_Kind G1-D": 4, "G1_Kind G1-E": 4, "G1_Kind G1-F": 3, "G1_Kind G1-G": 0,
+    "G2_Kind G2-A": 4, "G2_Kind G2-B": 4, "G2_Kind G2-C": 4, "G2_Kind G2-D": 4,
+    "G3_Kind G3-A": 0, "G3_Kind G3-B": 0, "G3_Kind G3-C": 1, "G3_Kind G3-D": 0, "G3_Kind G3-E": 0,
+    "G4_Kind G4-A": 3, "G4_Kind G4-B": 18, "G4_Kind G4-C": 3,
 }
+
+# Name-Normalisierung fuer alte abmeldungen.json-Formate -- wird bei jedem
+# echten Lauf ebenfalls aus config/name_aliases.json injiziert (siehe Hinweis
+# oben). Leerer Default hier: bei eigenstaendigem Testlauf ohne Injektion
+# bleiben Abwesenheiten in altem Namensformat einfach unerkannt (kein Crash).
+NAME_NORMALIZE = {}
 
 # ===================================================================
 #  FARBEN & DESIGN (nicht aendern)
@@ -98,21 +114,14 @@ def _load_abwesend():
     """
     Lädt Abwesenheiten für den Mittwoch nach der WC (END_DATUM + 1 Tag).
     Sucht abmeldungen.json zuerst im Skript-Verzeichnis, dann unter /tmp/.
-    Normalisiert Namen aus altem Format (Sinan → Sinan Y.) auf neues Format.
-    """
-    # Name-Normalisierung: altes Format → neues Format (Vorname N.)
-    NAME_NORMALIZE = {
-        "Sinan":        "Sinan Y.",   "Ilyas":       "Ilyas E.",   "Jonathan":    "Jonathan S.",
-        "Hannes":       "Hannes G.",  "Henry":       "Henry K.",   "Matti":       "Matti G.",
-        "Levent":       "Levent K.",  "Caius":       "Caius C.",   "Erik":        "Erik E.",
-        "Artem":        "Artem T.",   "Michael":     "Michael K.", "Anton":       "Anton K.",
-        "Mika":         "Mika W.",
-        "Felix (G1)":   "Felix E.",   "Finn (G1)":   "Finn M.",    "Ben (G1)":    "Ben B.",
-        "Ben G1":       "Ben B.",     "Felix G1":    "Felix E.",   "Finn G1":     "Finn M.",
-        "Finn (G3)":    "Finn T.",    "Ben (G3)":    "Ben F.",     "Finn G3":     "Finn T.",
-        "Ben G3":       "Ben F.",     "Felix (G4)":  "Felix L.",   "Felix G4":    "Felix L.",
-    }
+    Normalisiert Namen aus altem Format (z.B. "Vorname" → "Vorname X.") auf neues Format.
 
+    Phase 2 (24.08.2026): NAME_NORMALIZE ist keine lokale Konstante mehr,
+    sondern das Modul-globale NAME_NORMALIZE aus dem CONFIG-Block oben (bei
+    echten Laeufen aus config/name_aliases.json injiziert, siehe Hinweis am
+    Anfang der Datei). Frueher stand hier dieselbe Tabelle mit echten
+    Kindernamen hartkodiert.
+    """
     end = datetime.strptime(END_DATUM, "%d.%m.%Y")
     check_date = (end + timedelta(days=1)).strftime("%Y-%m-%d")
 

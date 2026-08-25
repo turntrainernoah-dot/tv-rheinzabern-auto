@@ -1,0 +1,9 @@
+# Phase 2 (24.08.2026): state_backups/ wurde aus dem oeffentlichen Repo entfernt
+# (enthielt taegliche Snapshots mit echten Kindernamen/Anwesenheiten/Trainer-
+# Einteilungen). Die Backups landen seitdem per SFTP im geschuetzten Server-
+# Ordner config/_state_backups/<datum>/ (siehe backup_state.py). Dieser Eintrag
+# verhindert, dass der Ordner versehentlich wieder committet wird.
+state_backups/
+
+__pycache__/
+*.pyc

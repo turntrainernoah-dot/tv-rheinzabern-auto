@@ -13,10 +13,11 @@ Ablauf:
   7. E-Mail Bestätigung senden
 
 Name-Format im Mail:  TAG.MONAT Name [optional: Emoji / für gestern / Wochentag]
-Bsp:  13.6 Felix G1
-      14.6 Mika
-      14.6 Finn G3 für gestern
-      15.6 Sinan 💪
+Bsp:  13.6 Vorname G1
+      14.6 Vorname
+      14.6 Vorname G3 für gestern
+      15.6 Vorname 💪
+(reale Namen/Aliase stehen nicht mehr im Code, siehe NAME_MAP/apply_name_aliases())
 """
 
 import json, os, re, sys, imaplib, subprocess, urllib.request, urllib.parse, hashlib
@@ -46,117 +47,40 @@ GH_MODELS_TOKEN   = os.environ.get("GH_MODELS_TOKEN", "") or os.environ.get("GIT
 CHAT_REMOTE       = os.environ.get("WC_CHAT_REMOTE", "wc_chat_input.json")
 
 # ════════════════════════════════════════════════════════════════
-#  NAME-MAPPING
+#  NAME-MAPPING (Phase 2, 24.08.2026: aus dem oeffentlichen Repo ausgelagert)
 #  Schlüssel: lowercase wie er im Mail vorkommen kann
 #  Wert: (Gruppe, interner Name im WC-Script)
+#
+#  NAME_MAP/AMBIGUOUS_NAMES/WC_GRUPPEN_TEMPLATE/DEFAULT_VORPUNKTE enthielten
+#  bisher die echten Klarnamen/Spitznamen aller Kinder hartkodiert im
+#  oeffentlichen Repo. Seit Phase 2 (24.08.2026) sind sie LEER und werden zur
+#  Laufzeit ausschliesslich aus dem geschuetzten Server-Ordner geladen
+#  (apply_name_aliases()/apply_config_roster(), siehe unten). Es gibt bewusst
+#  KEINEN Namens-Fallback mehr: kann die Datei nicht geladen werden, bricht
+#  main() klar ab (siehe REQUIRE_SERVER_ROSTER-Check), statt mit einer leeren
+#  oder veralteten Namensliste weiterzulaufen und z.B. WC-Mails mit "Unbekannter
+#  Name" fuer JEDES Kind abzulehnen.
 # ════════════════════════════════════════════════════════════════
 
-NAME_MAP = {
-    # ── G1 ──────────────────────────────────────────────────────
-    # Felix E. – alle Schreibweisen
-    "felix g1":      ("G1", "Felix E."),
-    "felix e.":      ("G1", "Felix E."),
-    "felix e":       ("G1", "Felix E."),
-    # Finn M. – alle Schreibweisen
-    "finn g1":       ("G1", "Finn M."),
-    "finn klein":    ("G1", "Finn M."),
-    "finn m.":       ("G1", "Finn M."),
-    "finn m":        ("G1", "Finn M."),
-    # Sinan Y.
-    "sinan":         ("G1", "Sinan Y."),
-    "sinan y.":      ("G1", "Sinan Y."),
-    "sinan y":       ("G1", "Sinan Y."),
-    # Ilyas E.
-    "ilyas":         ("G1", "Ilyas E."),
-    "ilyas e.":      ("G1", "Ilyas E."),
-    "ilyas e":       ("G1", "Ilyas E."),
-    # Jonathan S.
-    "jonathan":      ("G1", "Jonathan S."),
-    "jonathan s.":   ("G1", "Jonathan S."),
-    "jonathan s":    ("G1", "Jonathan S."),
-    # Hannes G.
-    "hannes":        ("G1", "Hannes G."),
-    "hannes g.":     ("G1", "Hannes G."),
-    "hannes g":      ("G1", "Hannes G."),
-    # Ben B.
-    "ben g1":        ("G1", "Ben B."),
-    "ben klein":     ("G1", "Ben B."),
-    "ben baron":     ("G1", "Ben B."),
-    "ben b.":        ("G1", "Ben B."),
-    "ben b":         ("G1", "Ben B."),
-    # ── G2 ──────────────────────────────────────────────────────
-    "henry":         ("G2", "Henry K."),
-    "henry k.":      ("G2", "Henry K."),
-    "henry k":       ("G2", "Henry K."),
-    "matti":         ("G2", "Matti G."),
-    "matti g.":      ("G2", "Matti G."),
-    "matti g":       ("G2", "Matti G."),
-    "levent":        ("G2", "Levent K."),
-    "levent k.":     ("G2", "Levent K."),
-    "levent k":      ("G2", "Levent K."),
-    "caius":         ("G2", "Caius C."),
-    "caius c.":      ("G2", "Caius C."),
-    "caius c":       ("G2", "Caius C."),
-    # ── G3 ──────────────────────────────────────────────────────
-    # Erik E.
-    "erik":          ("G3", "Erik E."),
-    "erik e.":       ("G3", "Erik E."),
-    "erik e":        ("G3", "Erik E."),
-    # Artem T.
-    "artem":         ("G3", "Artem T."),
-    "artem t.":      ("G3", "Artem T."),
-    "artem t":       ("G3", "Artem T."),
-    # Finn T.
-    "finn g3":       ("G3", "Finn T."),
-    "finn gross":    ("G3", "Finn T."),
-    "finn gro\xdf":  ("G3", "Finn T."),  # "finn groß"
-    "finn t.":       ("G3", "Finn T."),
-    "finn t":        ("G3", "Finn T."),
-    # Ben F.
-    "ben g3":        ("G3", "Ben F."),
-    "ben gross":     ("G3", "Ben F."),
-    "ben gro\xdf":   ("G3", "Ben F."),   # "ben groß"
-    "ben f.":        ("G3", "Ben F."),
-    "ben f":         ("G3", "Ben F."),
-    # Michael K.
-    "michael":       ("G3", "Michael K."),
-    "michael k.":    ("G3", "Michael K."),
-    "michael k":     ("G3", "Michael K."),
-    # ── G4 ──────────────────────────────────────────────────────
-    # Felix L.
-    "felix g4":      ("G4", "Felix L."),
-    "felix l.":      ("G4", "Felix L."),
-    "felix l":       ("G4", "Felix L."),
-    # Anton K.
-    "anton":         ("G4", "Anton K."),
-    "anton k.":      ("G4", "Anton K."),
-    "anton k":       ("G4", "Anton K."),
-    # Mika W.
-    "mika":          ("G4", "Mika W."),
-    "mika w.":       ("G4", "Mika W."),
-    "mika w":        ("G4", "Mika W."),
-    "mika werling":  ("G4", "Mika W."),
-}
+NAME_MAP = {}
 
-# Mehrdeutige Namen (brauchen Gruppenangabe)
-AMBIGUOUS_NAMES = {"felix", "finn", "ben"}
+# Mehrdeutige Namen (brauchen Gruppenangabe) – wird aus name_aliases.json befuellt
+AMBIGUOUS_NAMES = set()
 
 # Alle Namen in der richtigen Reihenfolge für den WC-Script (neues Format)
-WC_GRUPPEN_TEMPLATE = {
-    "G1": ["Felix E.", "Finn M.", "Sinan Y.", "Ilyas E.", "Jonathan S.", "Hannes G.", "Ben B."],
-    "G2": ["Henry K.", "Matti G.", "Levent K.", "Caius C."],
-    "G3": ["Erik E.", "Artem T.", "Finn T.", "Ben F.", "Michael K."],
-    "G4": ["Felix L.", "Anton K.", "Mika W."],
-}
+# – wird aus config/config.json befuellt (apply_config_roster)
+WC_GRUPPEN_TEMPLATE = {}
 
-# Initiale Vorpunkte (Stand nach Woche 06.06–09.06.2026, neues Name-Format)
-DEFAULT_VORPUNKTE = {
-    "G1_Felix E.": 8,    "G1_Finn M.": 3,    "G1_Sinan Y.": 0,
-    "G1_Ilyas E.": 8,    "G1_Jonathan S.": 7, "G1_Hannes G.": 5, "G1_Ben B.": 4,
-    "G2_Henry K.": 8,    "G2_Matti G.": 8,   "G2_Levent K.": 8,  "G2_Caius C.": 8,
-    "G3_Erik E.": 3,     "G3_Artem T.": 2,   "G3_Finn T.": 4,    "G3_Ben F.": 2, "G3_Michael K.": 3,
-    "G4_Felix L.": 3,    "G4_Anton K.": 3,   "G4_Mika W.": 21,
-}
+# Name-Normalisierung fuer alte abmeldungen.json-Formate (siehe apply_name_aliases);
+# wird zusaetzlich in den generierten create_wochenchallenge_v2-Lauf injiziert.
+NAME_NORMALIZE = {}
+
+# Initiale Vorpunkte – NUR Legacy-Fallback, falls wc_state_auto.json auf dem
+# Server jemals "alle_vorpunkte" leer/fehlend haette. Im Normalbetrieb nie
+# aktiv, weil das WC-Punkte-Ledger (wc_punkte_ledger.json) seit 01.07.2026 die
+# tatsaechliche Wahrheitsquelle ist (siehe Vault: WC-Punkte-Ledger-System).
+# Bewusst leer statt mit den alten Stand-Juni-2026-Werten je Kind.
+DEFAULT_VORPUNKTE = {}
 
 # Wochentag-Mapping (Deutsch → Python weekday, Mo=0 … So=6)
 WOCHENTAGE = {
@@ -182,20 +106,20 @@ def get_sftp():
 
 # ════════════════════════════════════════════════════════════════
 #  KEY-MIGRATION: alte Format-Keys → neue Format-Keys
+#  Phase 2 (24.08.2026): aus dem oeffentlichen Repo ausgelagert. War eine
+#  EINMALIGE Migrationstabelle fuer den Namensformat-Wechsel im Juni 2026
+#  (z.B. "G1_Vorname" -> "G1_Vorname X."). Der Server-Zustand ist seit Monaten
+#  durchgehend im neuen Format (siehe Vault: WC-Punkte-Ledger-System) -- diese
+#  Tabelle ist im Normalbetrieb bereits seit langem ein No-Op. Wird jetzt
+#  optional aus config/name_aliases.json ("old_key_map") geladen; bleibt sie
+#  leer, migriert migrate_vorpunkte_keys() einfach nichts (unveraendertes
+#  Verhalten fuer alle Keys, die ohnehin schon im neuen Format sind).
 # ════════════════════════════════════════════════════════════════
 
-OLD_KEY_MAP = {
-    "G1_Felix":   "G1_Felix E.",    "G1_Finn":     "G1_Finn M.",    "G1_Sinan":   "G1_Sinan Y.",
-    "G1_Ilyas":   "G1_Ilyas E.",    "G1_Jonathan": "G1_Jonathan S.","G1_Hannes":  "G1_Hannes G.",
-    "G1_Ben G1":  "G1_Ben B.",      "G2_Henry":    "G2_Henry K.",   "G2_Matti":   "G2_Matti G.",
-    "G2_Levent":  "G2_Levent K.",   "G2_Caius":    "G2_Caius C.",   "G3_Erik":    "G3_Erik E.",
-    "G3_Artem":   "G3_Artem T.",    "G3_Finn":     "G3_Finn T.",    "G3_Ben G3":  "G3_Ben F.",
-    "G3_Michael": "G3_Michael K.",  "G4_Felix":    "G4_Felix L.",   "G4_Anton":   "G4_Anton K.",
-    "G4_Mika":    "G4_Mika W.",
-}
+OLD_KEY_MAP = {}
 
 def migrate_vorpunkte_keys(alle_vorpunkte):
-    """Migriert alte Vorpunkte-Keys (z.B. 'G1_Felix') zu neuen Keys ('G1_Felix E.')."""
+    """Migriert alte Vorpunkte-Keys (z.B. 'G1_Vorname') zu neuen Keys ('G1_Vorname X.')."""
     migrated = {}
     changed = 0
     for key, val in alle_vorpunkte.items():
@@ -361,7 +285,7 @@ def resolve_date_modifier(parsed_date, rest_text):
         text = re.sub(r'f[uü]r\s+gestern', '', text, flags=re.IGNORECASE).strip()
         return d, text
 
-    # Wochentag am Ende (z.B. "Felix Montag" → Felix trainierte am Montag dieser Woche)
+    # Wochentag am Ende (z.B. "Vorname Montag" → Vorname trainierte am Montag dieser Woche)
     for wd_de, wd_py in WOCHENTAGE.items():
         if text.lower().endswith(' ' + wd_de) or text.lower() == wd_de:
             # Finde den wd_py-Wochentag in der gleichen Woche wie d
@@ -434,7 +358,7 @@ def parse_email_body(body):
         name_text = re.sub(r'\s+', ' ', name_text).strip()
 
         # Name nachschlagen (case-insensitive)
-        # Klammern normalisieren: "Ben (G1)" → "ben g1", "Finn (G3)" → "finn g3"
+        # Klammern normalisieren: "Vorname (G1)" → "vorname g1", "Vorname (G3)" → "vorname g3"
         name_lower = name_text.lower().strip()
         name_lower = re.sub(r'[()]', '', name_lower)
         name_lower = re.sub(r'\s+', ' ', name_lower).strip()
@@ -497,11 +421,19 @@ def build_gruppen(entries, week_start, num_days):
 #  CONFIG-BLOCK GENERIEREN & ERSETZEN
 # ════════════════════════════════════════════════════════════════
 
-def build_config_block(start_datum, end_datum, tage_header_raw, gruppen, vorherige):
+def build_config_block(start_datum, end_datum, tage_header_raw, gruppen, vorherige, name_normalize=None):
     """
     Erstellt den Python-Quellcode-String für den CONFIG-Block.
     tage_header_raw: list of strings like "Sa\n06.06." (mit echtem Newline-Char)
+
+    name_normalize (Phase 2, 24.08.2026): wird zusaetzlich als NAME_NORMALIZE
+    injiziert (frueher hartkodiert in create_wochenchallenge_v2.py, jetzt aus
+    config/name_aliases.json geladen -- siehe apply_name_aliases()). Default
+    None -> globales NAME_NORMALIZE dieses Moduls.
     """
+    if name_normalize is None:
+        name_normalize = NAME_NORMALIZE
+
     # TAGE_HEADER: echte Newlines als \\n-Escapes in der Quelldatei
     tage_parts = []
     for h in tage_header_raw:
@@ -515,6 +447,10 @@ def build_config_block(start_datum, end_datum, tage_header_raw, gruppen, vorheri
     # VORHERIGE_PUNKTE als Python-Dict
     vorherige_json = json.dumps(vorherige, indent=4, ensure_ascii=False)
 
+    # NAME_NORMALIZE als Python-Dict (ersetzt die frueher hartkodierte Kopie
+    # in create_wochenchallenge_v2.py::_load_abwesend())
+    normalize_json = json.dumps(name_normalize, indent=4, ensure_ascii=False)
+
     return (
         f'START_DATUM = "{start_datum}"\n'
         f'END_DATUM   = "{end_datum}"\n'
@@ -524,6 +460,8 @@ def build_config_block(start_datum, end_datum, tage_header_raw, gruppen, vorheri
         f'GRUPPEN = {gruppen_json}\n'
         f'\n'
         f'VORHERIGE_PUNKTE = {vorherige_json}\n'
+        f'\n'
+        f'NAME_NORMALIZE = {normalize_json}\n'
     )
 
 def replace_config_block(template, new_config):
@@ -551,15 +489,18 @@ def replace_config_block(template, new_config):
 # ════════════════════════════════════════════════════════════════
 
 def apply_config_roster(sftp):
-    """Laedt config/config.json (von admin.php gepflegt) und ueberschreibt
-    WC_GRUPPEN_TEMPLATE. Bei jedem Fehler bleibt die Hardcodierung aktiv."""
+    """Laedt config/config.json (von admin.php gepflegt) und befuellt
+    WC_GRUPPEN_TEMPLATE. Seit Phase 2 (24.08.2026) gibt es KEINE hartkodierte
+    Namensliste mehr im Repo -- bei jedem Fehler bleibt WC_GRUPPEN_TEMPLATE
+    leer, und main() bricht danach ueber den REQUIRE_SERVER_ROSTER-Check klar
+    ab, statt mit leerem/falschem Roster weiterzulaufen."""
     global WC_GRUPPEN_TEMPLATE
     try:
         f = sftp.open("config/config.json", "r")
         cfg = json.loads(f.read().decode("utf-8", errors="replace"))
         f.close()
     except Exception as e:
-        print(f"[CONFIG] config.json nicht ladbar ({e!r}) - nutze Hardcodierung.")
+        print(f"[CONFIG] config.json nicht ladbar ({e!r}).")
         return
     try:
         gruppen = cfg.get("gruppen") or ["G1", "G2", "G3", "G4"]
@@ -572,12 +513,69 @@ def apply_config_roster(sftp):
             if ni and g is not None:
                 tmpl.setdefault(g, []).append(ni)
         if not any(tmpl.values()):
-            print("[CONFIG] config.json ohne Turner - nutze Hardcodierung.")
+            print("[CONFIG] config.json ohne Turner.")
             return
         WC_GRUPPEN_TEMPLATE = tmpl
         print(f"[CONFIG] WC-Roster aus config.json: {sum(len(v) for v in tmpl.values())} Turner.")
     except Exception as e:
-        print(f"[CONFIG] Fehler beim Aufbau ({e!r}) - nutze Hardcodierung.")
+        print(f"[CONFIG] Fehler beim Aufbau ({e!r}).")
+
+
+def apply_name_aliases(sftp):
+    """Laedt config/name_aliases.json (geschuetzter Server-Ordner, gleiche
+    .htaccess wie config.json) und befuellt NAME_MAP, AMBIGUOUS_NAMES und
+    NAME_NORMALIZE. Ersetzt die frueher hartkodierte NAME_MAP (Spitznamen/
+    Schreibvarianten je Kind fuer die WC-Mail-/Chat-Erkennung). Kein
+    Namens-Fallback mehr im Code -- bei Fehler bleiben alle drei Strukturen
+    leer, main() bricht danach klar ab (REQUIRE_SERVER_ROSTER-Check)."""
+    global NAME_MAP, AMBIGUOUS_NAMES, NAME_NORMALIZE, OLD_KEY_MAP
+    try:
+        f = sftp.open("config/name_aliases.json", "r")
+        cfg = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+    except Exception as e:
+        print(f"[CONFIG] name_aliases.json nicht ladbar ({e!r}).")
+        return
+    try:
+        aliases = cfg.get("aliases") or {}
+        nm = {k.lower(): tuple(v) for k, v in aliases.items() if isinstance(v, (list, tuple)) and len(v) == 2}
+        if not nm:
+            print("[CONFIG] name_aliases.json ohne aliases.")
+            return
+        NAME_MAP        = nm
+        AMBIGUOUS_NAMES = set(cfg.get("ambiguous") or [])
+        NAME_NORMALIZE  = dict(cfg.get("normalize") or {})
+        OLD_KEY_MAP     = dict(cfg.get("old_key_map") or {})
+        print(f"[CONFIG] Name-Aliase aus name_aliases.json: {len(nm)} Eintraege, "
+              f"{len(AMBIGUOUS_NAMES)} mehrdeutig, {len(NAME_NORMALIZE)} Normalize-Eintraege, "
+              f"{len(OLD_KEY_MAP)} Alt-Format-Migrationen.")
+    except Exception as e:
+        print(f"[CONFIG] Fehler beim Aufbau der Name-Aliase ({e!r}).")
+
+
+def require_server_roster():
+    """Harter Abbruch, wenn Roster ODER Name-Aliase nicht vom Server geladen
+    werden konnten. Seit Phase 2 gibt es keine hartkodierten Namen mehr im
+    Code, die als Fallback einspringen koennten -- ein leerer/kein Server-
+    Zustand darf NICHT stillschweigend zu einer falschen/leeren WC-Liste
+    fuehren, sondern muss den Lauf klar abbrechen (siehe Vault: GitHub-Umzug,
+    Phase 2)."""
+    problems = []
+    if not any(WC_GRUPPEN_TEMPLATE.values()):
+        problems.append("WC_GRUPPEN_TEMPLATE leer (config/config.json nicht ladbar/leer)")
+    if not NAME_MAP:
+        problems.append("NAME_MAP leer (config/name_aliases.json nicht ladbar/leer)")
+    if problems:
+        msg = ("Wochenchallenge-Lauf abgebrochen: Roster/Namensliste konnte nicht vom "
+               "Server geladen werden -- " + "; ".join(problems) + ". "
+               "Es gibt keinen Namens-Fallback im Code mehr (Phase 2, 24.08.2026), "
+               "damit die Automatik nie mit falschen/leeren Daten weiterlaeuft.")
+        print(f"[FATAL] {msg}")
+        try:
+            send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\n{msg}")
+        except Exception:
+            pass
+        raise SystemExit(msg)
 
 
 def fetch_chat_body(sftp):
@@ -648,6 +646,8 @@ def main():
     print("Verbinde SFTP...")
     ssh, sftp = get_sftp()
     apply_config_roster(sftp)
+    apply_name_aliases(sftp)
+    require_server_roster()
     wc_state  = load_wc_state(sftp)
 
     if WC_SOURCE == "chat":

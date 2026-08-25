@@ -6,8 +6,8 @@ Wandelt einen ROHEN WhatsApp-Wochenchallenge-Chat in das saubere Zeilenformat um
 das auto_wochenchallenge.parse_email_body() bereits versteht:
 
     DD.MM Kanonischer-Name
-    z.B.  06.06 Felix E.
-          07.06 Erik E.
+    z.B.  06.06 Vorname X.
+          07.06 Vorname Y.
 
 Damit bleibt die komplette restliche Pipeline (Parsen, Gruppen, Excel/PDF, Upload)
 UNVERAENDERT - minimales Bruchrisiko. Die KI macht nur die schmutzige Deutungsarbeit:
@@ -59,8 +59,8 @@ Deine Aufgabe: Erzeuge eine SAUBERE Liste aller gueltigen Trainings-Meldungen.
 REGELN:
 1. Ordne jede Meldung einem Turner aus dem ROSTER zu (echte Person). Anzeigenamen,
    Spitznamen, Vornamen, Nachname-Initialen und Emojis muessen auf den ROSTER-Namen
-   gemappt werden. Gib IMMER exakt den kanonischen Roster-Namen aus (z.B. "Felix E.",
-   "Ben F."), nie den Spitznamen.
+   gemappt werden. Gib IMMER exakt den kanonischen Roster-Namen aus (z.B. "Vorname X.",
+   "Vorname Y."), nie den Spitznamen.
 2. Wer eine Nachricht schreibt, meldet normalerweise SICH SELBST - ausser der Text
    nennt klar eine andere Person.
 3. DATUM pro Meldung aus dem Zeitstempel "[TT.MM.JJ, HH:MM] Name: ...":

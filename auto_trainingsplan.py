@@ -24,31 +24,21 @@ from openpyxl.styles import PatternFill, Font, Alignment
 #  STATISCHE KONFIGURATION
 # ════════════════════════════════════════════════════════════════
 
-ALLE_TURNER = {
-    "G1": ["Felix E.", "Finn M.", "Sinan Y.", "Ilyas E.", "Jonathan S.", "Hannes G.", "Ben B."],
-    "G2": ["Henry K.", "Matti G.", "Levent K.", "Caius C."],
-    "G3": ["Erik E.", "Artem T.", "Finn T.", "Ben F.", "Michael K."],
-    "G4": ["Felix L.", "Anton K.", "Mika W."],
-}
-ALLE_TRAINER = ["Noah W.", "Andy K.", "Fabian G.", "Cassian P.", "Julian K.", "Torben W."]
+# Phase 2 (24.08.2026): aus dem oeffentlichen Repo ausgelagert. ALLE_TURNER/
+# ALLE_TRAINER/WEBSITE_TO_DISPLAY enthielten bisher die echten Klarnamen aller
+# Kinder und Trainer hartkodiert im oeffentlichen Repo. Sie sind jetzt LEER
+# und werden ausschliesslich zur Laufzeit aus dem geschuetzten Server-Ordner
+# geladen (apply_config_roster() unten, unveraendert seit Stage 4 des
+# Admin-Bereich-Systems -- neu ist nur, dass es keinen Namens-Fallback mehr
+# gibt). Kann config/config.json nicht geladen werden, bricht main() klar ab
+# (REQUIRE_SERVER_ROSTER-Check), statt mit leerem Roster einen kaputten oder
+# veralteten Plan zu erzeugen.
+ALLE_TURNER = {"G1": [], "G2": [], "G3": [], "G4": []}
+ALLE_TRAINER = []
 
-# Mapping: Website-Format (nach normalize) → Anzeigename
-WEBSITE_TO_DISPLAY = {
-    # G1
-    "Felix G1": "Felix E.", "Finn G1": "Finn M.", "Sinan": "Sinan Y.",
-    "Ilyas": "Ilyas E.", "Jonathan": "Jonathan S.", "Hannes": "Hannes G.",
-    "Ben G1": "Ben B.",
-    # G2
-    "Henry": "Henry K.", "Matti": "Matti G.", "Levent": "Levent K.", "Caius": "Caius C.",
-    # G3
-    "Erik": "Erik E.", "Artem": "Artem T.", "Finn G3": "Finn T.",
-    "Ben G3": "Ben F.", "Michael": "Michael K.",
-    # G4
-    "Felix G4": "Felix L.", "Anton": "Anton K.", "Mika": "Mika W.",
-    # Trainer
-    "Noah": "Noah W.", "Andy": "Andy K.", "Fabian": "Fabian G.",
-    "Cassian": "Cassian P.", "Julian": "Julian K.", "Torben": "Torben W.",
-}
+# Mapping: Website-Format (nach normalize) → Anzeigename -- wird aus
+# config/config.json befuellt (apply_config_roster).
+WEBSITE_TO_DISPLAY = {}
 
 GERAETE_ROTATION = [
     ("Boden", "Barren"),
@@ -292,8 +282,8 @@ def plan_exists(sftp, datum_kurz):
         return False
 
 def normalize_name(name):
-    """Website-Format → interner Anzeigename (z.B. 'Felix (G1)' → 'Felix E.')."""
-    # Schritt 1: "(G1)" Suffix entfernen → "Felix G1"
+    """Website-Format → interner Anzeigename (z.B. 'Vorname (G1)' → 'Vorname X.')."""
+    # Schritt 1: "(G1)" Suffix entfernen → "Vorname G1"
     intermediate = re.sub(r'\s*\(G(\d+)\)$', r' G\1', name.strip())
     # Schritt 2: Mapping auf neues Anzeigeformat
     return WEBSITE_TO_DISPLAY.get(intermediate, WEBSITE_TO_DISPLAY.get(name.strip(), intermediate))
@@ -1275,16 +1265,19 @@ def send_whatsapp(text):
 # ════════════════════════════════════════════════════════════════
 
 def apply_config_roster(sftp):
-    """Laedt config/config.json (von admin.php gepflegt) und ueberschreibt
-    ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY. Bei jedem Fehler bleibt die
-    Hardcodierung aktiv -> der Plan wird NIE durch eine fehlerhafte config kaputt."""
+    """Laedt config/config.json (von admin.php gepflegt) und befuellt
+    ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY. Seit Phase 2 (24.08.2026)
+    gibt es KEINE hartkodierte Namensliste mehr im Repo -- bei jedem Fehler
+    bleiben die drei Strukturen leer, und main() bricht danach ueber den
+    REQUIRE_SERVER_ROSTER-Check klar ab, statt einen kaputten/leeren Plan zu
+    erzeugen."""
     global ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY
     try:
         f = sftp.open("config/config.json", "r")
         cfg = json.loads(f.read().decode("utf-8", errors="replace"))
         f.close()
     except Exception as e:
-        print(f"[CONFIG] config.json nicht ladbar ({e!r}) - nutze Hardcodierung.")
+        print(f"[CONFIG] config.json nicht ladbar ({e!r}).")
         return
     try:
         gruppen = cfg.get("gruppen") or ["G1", "G2", "G3", "G4"]
@@ -1304,7 +1297,7 @@ def apply_config_roster(sftp):
                 g = p.get("gruppe")
                 turner.setdefault(g, []).append(ni)
         if not trainer or not any(turner.values()):
-            print("[CONFIG] config.json unvollstaendig - nutze Hardcodierung.")
+            print("[CONFIG] config.json unvollstaendig.")
             return
         ALLE_TURNER        = turner
         ALLE_TRAINER       = trainer
@@ -1312,7 +1305,26 @@ def apply_config_roster(sftp):
         print(f"[CONFIG] Roster aus config.json: "
               f"{sum(len(v) for v in turner.values())} Turner, {len(trainer)} Trainer.")
     except Exception as e:
-        print(f"[CONFIG] Fehler beim Aufbau ({e!r}) - nutze Hardcodierung.")
+        print(f"[CONFIG] Fehler beim Aufbau ({e!r}).")
+
+
+def require_server_roster():
+    """Harter Abbruch, wenn der Roster nicht vom Server geladen werden konnte.
+    Seit Phase 2 gibt es keine hartkodierten Namen mehr im Code, die als
+    Fallback einspringen koennten -- ein leerer/kein Server-Zustand darf NICHT
+    stillschweigend zu einem falschen/leeren Trainingsplan fuehren, sondern
+    muss den Lauf klar abbrechen (siehe Vault: GitHub-Umzug, Phase 2)."""
+    if not any(ALLE_TURNER.values()) or not ALLE_TRAINER:
+        msg = ("Trainingsplan-Lauf abgebrochen: Roster konnte nicht von config/config.json "
+               "geladen werden (leer oder nicht erreichbar). Es gibt keinen Namens-Fallback "
+               "im Code mehr (Phase 2, 24.08.2026), damit die Automatik nie mit falschen/"
+               "leeren Daten weiterlaeuft.")
+        print(f"[FATAL] {msg}")
+        try:
+            send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\n{msg}")
+        except Exception:
+            pass
+        raise SystemExit(msg)
 
 
 def build_admin_trainer_plan(absences, geraet_1, geraet_2, g1_starts_geraet2, partial, ki=None):
@@ -2071,6 +2083,7 @@ def main():
     print("Verbinde mit Server...")
     ssh, sftp = get_sftp()
     apply_config_roster(sftp)
+    require_server_roster()
 
     state              = load_state(sftp)
     abmeldungen, raw_abm_hash = read_abmeldungen(sftp)
