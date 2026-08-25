@@ -56,6 +56,7 @@ Dieser Abschnitt gilt für **alle** Repos und für den lokalen Ordner `C:\Claude
 | `tv-memory` | privat, weitergebbar | Vereinswissen ohne Zugangsdaten — **ist selbst Noahs Vereins-Obsidian-Vault** |
 | `noah-memory` | privat | Persönliches, Studium, Schreibstil — **ist selbst Noahs privater Obsidian-Vault** |
 | `tv-backups` | privat | Server-Backup-Automatik |
+| `dashboard-privat` | privat | **Privat.** Noahs persoenliches iCloud-Kalender-Dashboard, laeuft unter /dashboard/ |
 | `tv-rheinzabern-auto` | **öffentlich** | Automatisierung. Öffentlich wegen unbegrenzter Actions-Minuten |
 
 **Zu `tv-rheinzabern-auto`:** Das Repo ist absichtlich öffentlich, weil die Vereins-Automatik sonst am Minuten-Kontingent scheitert (Ausfall vom 19.08.2026). Deshalb dürfen dort **keine Klarnamen von Kindern oder Trainern** stehen — die Zuordnung liegt in `config/name_aliases.json` auf dem Server und wird zur Laufzeit geladen. Wer dort Namen einfügt, macht sie öffentlich.
