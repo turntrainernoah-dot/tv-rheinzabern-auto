@@ -98,6 +98,48 @@ selbst deployen, Monatskontingent aufgebraucht):
     -> Website auswaehlen, "Trockenlauf" zuerst auf true
     -> Liste pruefen, dann nochmal mit Trockenlauf false
 
+### Fuer Claude-Agenten: so wird der Deploy vollstaendig ausgefuehrt
+
+Der Workflow laeuft in einem ANDEREN Repo als dem, in dem du gerade arbeitest. `gh workflow
+run` kehrt sofort zurueck und sagt nichts ueber das Ergebnis. **Melde an dieser Stelle nicht
+"laeuft, ich melde mich" und beende die Aufgabe — warte auf das Ergebnis.** Der Deploy ist
+erst fertig, wenn der Lauf durch ist UND die Seite geprueft wurde.
+
+Kompletter Ablauf (WEBSITE ersetzen):
+
+```bash
+R=turntrainernoah-dot/tv-rheinzabern-auto
+gh workflow run "Website deployen" --repo $R    -f website=WEBSITE -f dry_run=false -f trotzdem=false
+
+# kurz warten, bis der Lauf angelegt ist, dann seine ID holen
+sleep 8
+ID=$(gh run list --repo $R --workflow="Website deployen" --limit 1      --json databaseId -q '.[0].databaseId')
+
+# auf das Ende warten (blockiert, bis fertig)
+gh run watch $ID --repo $R --exit-status
+
+# Zusammenfassung ansehen - dort steht der deployte Commit und die Dateizahl
+gh run view $ID --repo $R --log | grep -iE "Deployt wird|Datei\(en\)|ABBRUCH|Fertig"
+```
+
+Danach IMMER pruefen, ob die Seite laeuft, und das Ergebnis berichten:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}
+" -L https://tv-rheinzabern.e-websolutions.de/PFAD/
+```
+
+Serverpfade: tv-belege -> /belege/ | tv-spiele -> /spiele/ | tv-wogele2026 -> /wogele2026/ |
+familie-website -> /familievlklv56j1b/ | tv-trainerportal -> /
+
+Wenn `gh run watch` fehlschlaegt (exit-status ungleich 0), ist der Deploy NICHT gelaufen.
+Haeufigster Grund ist die Branch-Pruefung unten. Dann den Grund berichten, nicht einfach
+"erfolgreich gestartet" melden.
+
+Ohne Zugriff auf tv-rheinzabern-auto kannst du den Workflow nicht ausloesen. Dann sag Noah,
+dass er den Knopf selbst druecken muss (Actions -> "Website deployen" -> Run workflow), und
+nenne ihm die Website. Behaupte nicht, es sei erledigt.
+
 **Wenn der Workflow abbricht mit "ungemergte Arbeit":** Dann liegt fertiger Code auf
 einem anderen Branch und wuerde NICHT mit hochgeladen. Der Workflow nennt die Branches.
 Entweder nach `main` mergen, oder den Workflow mit diesem Branch als Ziel starten. Diese
