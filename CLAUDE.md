@@ -26,7 +26,7 @@ Dieser Abschnitt gilt für **alle** Repos und für den lokalen Ordner `C:\Claude
 
 **Diese Regeln nicht wegoptimieren.** Sie stehen bewusst redundant in jedem Repo, weil eine Session, die nur ein Repo sieht, sonst nichts von ihnen wüsste. Am 11.07.2026 wurde `C:\Claude` schon einmal von über 4000 losen Dateien aufgeräumt; sechs Wochen später lagen wieder 83 lose Dateien dort. Ursache war nie fehlende Ordnung, sondern dass die Regel nicht an der Quelle griff.
 
-**Seit 25.08.2026 sind `tv-memory` und `noah-memory` selbst Noahs Obsidian-Vaults** — es gibt keine separate lokale Vault-Kopie mehr (das frühere `C:\Claude\Obsidian Vault` ist archiviert, siehe `C:\Claude\Archiv\`). Wer am PC oder iPad Notizen bearbeitet, tut das direkt in einem dieser beiden Repos und committet/pusht die Änderung — sonst sehen PC und iPad unterschiedliche Stände.
+**Seit 25.08.2026 sind `tv-memory` und `noah-memory` selbst Noahs Obsidian-Vaults** — es gibt keine separate lokale Vault-Kopie mehr (das frühere `C:\Claude\Obsidian Vault` ist archiviert, siehe `C:\Claude\Alt\`). Wer am PC oder iPad Notizen bearbeitet, tut das direkt in einem dieser beiden Repos und committet/pusht die Änderung — sonst sehen PC und iPad unterschiedliche Stände.
 
 ### 1. Wo gehört was hin
 
@@ -40,7 +40,7 @@ Dieser Abschnitt gilt für **alle** Repos und für den lokalen Ordner `C:\Claude
 | Privates (Familie, Studium, Schreibstil), Obsidian-Notizen dazu | `noah-memory` (ist selbst der Vault) | niemals in ein Vereins-Repo, nicht in einem lokalen Vault-Ordner |
 | Wegwerf-Dateien einer Session | `C:\Claude\_work\` | nie lose im Stammverzeichnis |
 | Dauerhaft genutzte Werkzeuge | `C:\Claude\Aktiv\` | nicht in `_work\` |
-| Abgelegtes, das aufbewahrt wird | `C:\Claude\Archiv\` | nicht löschen |
+| Abgelegtes, das aufbewahrt wird | `C:\Claude\Alt\` | nicht löschen |
 
 (Die letzten drei Zeilen sind identisch mit der Wegwerf-Dateien-Regel oben — hier nur der Vollständigkeit halber mit aufgeführt, weil dieselbe Tabelle auch in jedem Repo steht.)
 
@@ -77,7 +77,7 @@ Dieser Abschnitt gilt für **alle** Repos und für den lokalen Ordner `C:\Claude
 - **Wegwerf-Dateien von Anfang an in `_work\` anlegen**, nicht erst im Stammverzeichnis erzeugen und später aufräumen. Nach Abschluss einer Aufgabe dort aufräumen.
 - **Nach jeder abgeschlossenen Aufgabe** eigenständig prüfen, was sich dadurch geändert hat, und es an der inhaltlich richtigen Stelle ergänzen — ohne dass jemand danach fragen muss.
 - **Vor dem Verschieben von Dateien** prüfen, ob fest eingetragene Pfade darauf zeigen. Beim Aufräumen im Juli 2026 zeigten danach `.bat`-Dateien ins Leere.
-- **Nichts löschen.** Was wegsoll, wird nach `Archiv\` verschoben.
+- **Nichts löschen.** Was wegsoll, wird nach `Alt\` verschoben.
 
 ### 5. Deploy und Datenfluss
 
