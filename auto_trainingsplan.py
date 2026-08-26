@@ -55,6 +55,18 @@ GRUPPEN_ZEITEN = {}
 # config/config.json befuellt (apply_config_roster).
 IMMER_SPRINGER = set()
 
+# Gruppennamen, die ihre beiden Geraete-Bloecke in VERTAUSCHTER Reihenfolge
+# turnen ("geraet_tausch": true in config.json, admin.php-Checkbox "Geraet-
+# Reihenfolge tauschen"): waehrend ihres zeitlich ERSTEN Blocks (Config-
+# Schluessel "geraet1") stehen sie tatsaechlich auf dem physischen Geraet 2,
+# waehrend des zweiten ("geraet2") auf Geraet 1 -- siehe _effektive_phase().
+# Loest dieselbe Kapazitaets-Kollision wie die versetzte Zeit (siehe
+# _VERSETZTE_ZEITEN unten), aber ohne die Uhrzeit zu verschieben: 3+ Gruppen
+# koennen dadurch zeitgleich trainieren, solange nie mehr als 2 gleichzeitig
+# auf demselben physischen Geraet stehen. Wird aus config/config.json
+# befuellt (apply_config_roster).
+GRUPPEN_TAUSCH = set()
+
 GERAETE_ROTATION = [
     ("Boden", "Barren"),
     ("Sprung", "Reck"),
@@ -114,10 +126,23 @@ def farbe_fuer_phase(phase):
     das fruehere 4-Farben-Schema): Aufwaermen -> lila, Geraet1 -> blau,
     Geraet2 -> orange, alles andere (kein Training gerade / Luecke) ->
     Aufbauen-Grau. Die max.-2-Gruppen-pro-Geraet-Grenze ist seit dem
-    Gruppenzeiten-Umbau eine Config-Invariante (admin.php-Validierung),
-    keine Laufzeit-Berechnung mehr -- ein Alternierungs-Flag wie frueher
-    g1_starts_geraet2 fuer Farben ist deshalb nicht mehr noetig."""
+    Gruppenzeiten-Umbau eine Config-Invariante (admin.php-Validierung).
+    `phase` muss hier bereits die EFFEKTIVE (Tausch-bereinigte) Phase sein --
+    siehe _effektive_phase(). Ein globales Alternierungs-Flag wie frueher
+    g1_starts_geraet2 ist nicht mehr noetig, weil GRUPPEN_TAUSCH denselben
+    Zweck pro Gruppe uebernimmt."""
     return {"aufwaermen": "aufwaermen", "geraet1": "g1_blau", "geraet2": "g2_orange"}.get(phase, "aufbauen")
+
+def _effektive_phase(gruppe, phase):
+    """Wendet GRUPPEN_TAUSCH auf eine rohe Config-Phase an: steht `gruppe` auf
+    Tausch, wird 'geraet1' zu 'geraet2' und umgekehrt (Aufwaermen bleibt
+    unveraendert) -- so turnt die Gruppe zeitlich weiterhin in ihrem
+    konfigurierten Block, aber auf dem jeweils ANDEREN physischen Geraet.
+    Muss vor jedem farbe_fuer_phase()-Aufruf auf die rohe Phase angewendet
+    werden."""
+    if phase in ("geraet1", "geraet2") and gruppe in GRUPPEN_TAUSCH:
+        return "geraet2" if phase == "geraet1" else "geraet1"
+    return phase
 
 # ════════════════════════════════════════════════════════════════
 #  UMGEBUNGSVARIABLEN (GitHub Secrets)
@@ -579,8 +604,13 @@ def group_active_rows(row_phases):
 
 def zeiten_kompatibel(gruppen_zeiten, a, b):
     """True, wenn zwei Gruppen an BEIDEN Wochentagen exakt dieselben Phasen-
-    Zeitfenster haben -- Voraussetzung fuer eine Zusammenlegung (ein Trainer
-    kann nicht gleichzeitig zwei verschiedene Zeitplaene halten)."""
+    Zeitfenster UND dieselbe Geraete-Reihenfolge (GRUPPEN_TAUSCH) haben --
+    Voraussetzung fuer eine Zusammenlegung (ein Trainer kann nicht
+    gleichzeitig zwei verschiedene Zeitplaene halten, und eine zusammengelegte
+    Einheit turnt als EIN Trainer-gefuehrter Block auf einem eindeutigen
+    Geraet -- bei unterschiedlichem Tausch waere unklar, welches)."""
+    if (a in GRUPPEN_TAUSCH) != (b in GRUPPEN_TAUSCH):
+        return False
     za, zb = gruppen_zeiten.get(a) or {}, gruppen_zeiten.get(b) or {}
     for tag in ("mi", "fr"):
         ta, tb = za.get(tag) or {}, zb.get(tag) or {}
@@ -844,7 +874,7 @@ def _cells_for_unit(label, groups, grid_rows, grid_phase):
         if phase == "aufwaermen":
             cells.append((f"AW {label}", "aufwaermen"))
         elif phase in ("geraet1", "geraet2"):
-            cells.append((label, farbe_fuer_phase(phase)))
+            cells.append((label, farbe_fuer_phase(_effektive_phase(ref, phase))))
         elif first_active is not None and i > last_active:
             cells.append(("Abbauen", "aufbauen"))
         else:
@@ -1359,7 +1389,7 @@ def apply_config_roster(sftp):
     ({"name":..,"zeiten":{...}}, seit dem Gruppenzeiten-Umbau) als auch das
     alte String-Format (vor der Migration) enthalten -- fehlt "zeiten",
     greifen die migrierten Default-Werte (_default_zeiten_for)."""
-    global ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY, GRUPPEN_ORDER, GRUPPEN_ZEITEN, IMMER_SPRINGER
+    global ALLE_TURNER, ALLE_TRAINER, WEBSITE_TO_DISPLAY, GRUPPEN_ORDER, GRUPPEN_ZEITEN, IMMER_SPRINGER, GRUPPEN_TAUSCH
     try:
         f = sftp.open("config/config.json", "r")
         cfg = json.loads(f.read().decode("utf-8", errors="replace"))
@@ -1369,12 +1399,14 @@ def apply_config_roster(sftp):
         return
     try:
         gruppen_raw = cfg.get("gruppen") or []
-        gruppen_names, zeiten = [], {}
+        gruppen_names, zeiten, tausch = [], {}, set()
         for g in gruppen_raw:
             if isinstance(g, dict) and g.get("name"):
                 name = g["name"]
                 gz = g.get("zeiten")
                 zeiten[name] = gz if isinstance(gz, dict) and gz.get("mi") and gz.get("fr") else _default_zeiten_for(name)
+                if g.get("geraet_tausch"):
+                    tausch.add(name)
                 gruppen_names.append(name)
             elif isinstance(g, str):
                 zeiten[g] = _default_zeiten_for(g)
@@ -1410,9 +1442,11 @@ def apply_config_roster(sftp):
         GRUPPEN_ORDER      = gruppen_names
         GRUPPEN_ZEITEN     = zeiten
         IMMER_SPRINGER     = immer_springer
+        GRUPPEN_TAUSCH     = tausch
         print(f"[CONFIG] Roster aus config.json: "
               f"{sum(len(v) for v in turner.values())} Turner, {len(trainer)} Trainer, "
-              f"{len(gruppen_names)} Gruppen, {len(immer_springer)} immer-Springer.")
+              f"{len(gruppen_names)} Gruppen, {len(immer_springer)} immer-Springer, "
+              f"{len(tausch)} mit Geraet-Tausch.")
     except Exception as e:
         print(f"[CONFIG] Fehler beim Aufbau ({e!r}).")
 
