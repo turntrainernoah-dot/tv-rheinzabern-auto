@@ -23,12 +23,13 @@ def check(name, cond, detail=""):
 def default_zeiten_for_all(gruppen):
     return {g: a._default_zeiten_for(g) for g in gruppen}
 
-def set_roster(gruppen, turner_pro_gruppe, trainer, immer_springer=None, zeiten=None):
+def set_roster(gruppen, turner_pro_gruppe, trainer, immer_springer=None, zeiten=None, tausch=None):
     a.GRUPPEN_ORDER = list(gruppen)
     a.ALLE_TURNER = {g: list(turner_pro_gruppe.get(g, [f"K{g}{i}" for i in range(1, 6)])) for g in gruppen}
     a.ALLE_TRAINER = list(trainer)
     a.IMMER_SPRINGER = set(immer_springer or [])
     a.GRUPPEN_ZEITEN = zeiten or default_zeiten_for_all(gruppen)
+    a.GRUPPEN_TAUSCH = set(tausch or [])
     a.WEBSITE_TO_DISPLAY = {}
 
 def no_absences(gruppen):
@@ -257,6 +258,59 @@ def test_edge_cases():
     check("alle Turner abwesend -> kein Training", "ACHTUNG" in anm[0], f"{anm}")
 
 
+# ════════════════════════════════════════════════════════════════
+# 5) Geraet-Tausch: admin-konfigurierbare Geraete-Reihenfolge pro Gruppe
+#    (loest die Kapazitaetskollision bei 3+ Gruppen mit identischer Zeit,
+#    ohne die Uhrzeit zu verschieben -- siehe GRUPPEN_TAUSCH-Kommentar).
+# ════════════════════════════════════════════════════════════════
+def test_geraet_tausch():
+    # Alle 3 Gruppen haben EXAKT dieselbe Zeit (Standard) -- ohne Tausch waere
+    # das eine Kapazitaetsverletzung (3 Gruppen gleichzeitig auf Geraet 1),
+    # die admin.php::validateGruppenZeiten() blockieren wuerde. G3 bekommt
+    # geraet_tausch=True, um genau das aufzuloesen.
+    gruppen = ["G1", "G2", "G3"]
+    turner = {g: [f"{g}Kind{i}" for i in range(1, 4)] for g in gruppen}
+    trainer = ["Trainer A", "Trainer B", "Trainer C"]
+    zeiten = {g: a._default_zeiten_for("G1") for g in gruppen}  # alle 3 identisch, Standard-Zeit
+    set_roster(gruppen, turner, trainer, zeiten=zeiten, tausch={"G3"})
+
+    check("_effektive_phase ohne Tausch unveraendert",
+          a._effektive_phase("G1", "geraet1") == "geraet1" and a._effektive_phase("G1", "geraet2") == "geraet2")
+    check("_effektive_phase mit Tausch vertauscht geraet1/geraet2",
+          a._effektive_phase("G3", "geraet1") == "geraet2" and a._effektive_phase("G3", "geraet2") == "geraet1")
+    check("_effektive_phase laesst aufwaermen unangetastet",
+          a._effektive_phase("G3", "aufwaermen") == "aufwaermen")
+
+    check("G1/G3 trotz identischer Zeiten NICHT zeit-kompatibel (unterschiedlicher Tausch)",
+          not a.zeiten_kompatibel(a.GRUPPEN_ZEITEN, "G1", "G3"))
+    check("G1/G2 weiterhin zeit-kompatibel (beide ohne Tausch)",
+          a.zeiten_kompatibel(a.GRUPPEN_ZEITEN, "G1", "G2"))
+
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+    plan, _s, _anm = a.build_trainer_plan(no_absences(gruppen), grid_rows, grid_phase)
+    # G3 haelt ihren zeitlich ERSTEN Block (Config-Schluessel "geraet1") in der
+    # Farbe von Geraet 2 und den zweiten in der Farbe von Geraet 1 -- exakt
+    # umgekehrt zu G1/G2, obwohl die Uhrzeiten identisch sind.
+    g3_cells = next(c for c in plan.values() if c and any(txt == "G3" for txt, _ck in c))
+    g1_cells = next(c for c in plan.values() if c and any(txt == "G1" for txt, _ck in c))
+    g3_colors = [ck for txt, ck in g3_cells if txt == "G3"]
+    g1_colors = [ck for txt, ck in g1_cells if txt == "G1"]
+    check("G3 (Tausch): erster Geraete-Block ist g2_orange", g3_colors[0] == "g2_orange", f"{g3_colors}")
+    check("G3 (Tausch): zweiter Geraete-Block ist g1_blau", g3_colors[1] == "g1_blau", f"{g3_colors}")
+    check("G1 (kein Tausch): erster Geraete-Block bleibt g1_blau", g1_colors[0] == "g1_blau", f"{g1_colors}")
+    check("G1 (kein Tausch): zweiter Geraete-Block bleibt g2_orange", g1_colors[1] == "g2_orange", f"{g1_colors}")
+    # Kapazitaets-Invariante von Hand nachgerechnet: zu jedem Zeitpunkt hoechstens
+    # 2 Gruppen auf derselben physischen Farbe (das ist es, was der Tausch loest).
+    for i in range(len(grid_rows)):
+        colors_at_row = []
+        for cells in (g1_cells, g3_cells, next(c for c in plan.values() if c and any(txt == "G2" for txt, _ck in c))):
+            txt, ck = cells[i]
+            if ck in ("g1_blau", "g2_orange"):
+                colors_at_row.append(ck)
+        check(f"Zeile {i}: max. 2 Gruppen pro physischem Geraet", colors_at_row.count("g1_blau") <= 2 and colors_at_row.count("g2_orange") <= 2,
+              f"{colors_at_row}")
+
+
 if __name__ == "__main__":
     test_regression_grid()
     test_regression_plan_shape()
@@ -266,6 +320,7 @@ if __name__ == "__main__":
     test_rotation_fairness()
     test_ki_path_parity()
     test_edge_cases()
+    test_geraet_tausch()
     print()
     if FAILS:
         print(f"{len(FAILS)} FEHLGESCHLAGEN:")
