@@ -795,11 +795,21 @@ def get_absences(abmeldungen, training_date, grid_rows):
         notiz  = entry.get("notiz", "").strip()
 
         # Trainer mit Verspaetung / frueher-gehen: ANWESEND, nur Zeitbloecke blocken.
+        # Die Website hat zwei eigene Kontrollkaestchen ("Verspaetung"/"Frueher gehen"),
+        # die unabhaengig vom Notiz-Text gesetzt werden und Vorrang vor der reinen
+        # Text-Erkennung haben (Bugfix 28.08.2026: frueher_gehen wurde bisher nirgends
+        # gelesen, wodurch ein Trainer mit gesetztem Haken aber unpassendem/fehlendem
+        # Notiz-Text faelschlich als komplett abwesend statt als Teil-Anwesend galt).
         if name in ALLE_TRAINER:
             kind, tmin = parse_trainer_timing(notiz)
-            is_versp = bool(entry.get("verspaetung", False))
-            if is_versp or is_timing_note(notiz, kind, tmin):
-                if kind is None:
+            is_versp      = bool(entry.get("verspaetung", False))
+            is_frueh_flag = bool(entry.get("frueher_gehen", False))
+            if is_versp or is_frueh_flag or is_timing_note(notiz, kind, tmin):
+                if is_versp:
+                    kind = "spaet"
+                elif is_frueh_flag:
+                    kind = "frueh"
+                elif kind is None:
                     kind = "spaet"
                 blocked = compute_blocked_slots(kind, tmin, grid_rows)
                 tstr = f"{tmin//60:02d}:{tmin%60:02d}" if tmin is not None else None

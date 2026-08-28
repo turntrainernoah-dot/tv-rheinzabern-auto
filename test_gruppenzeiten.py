@@ -418,6 +418,47 @@ def test_deterministic_timing_parser():
           a._parse_command_line("Cassi geht früher") is None)
 
 
+def test_absences_frueher_gehen_checkbox():
+    """Bugfix 28.08.2026: Die Website hat ein eigenes Kontrollkaestchen
+    "Frueher gehen" (Feld 'frueher_gehen' in abmeldungen.json), unabhaengig
+    vom Notiz-Text. get_absences() las dieses Feld bisher an KEINER Stelle
+    (nur 'verspaetung'), wodurch ein Trainer mit gesetztem Haken aber ohne
+    erkennbares Timing-Schluesselwort im Notiz-Text komplett aus dem Plan
+    verschwand statt teil-anwesend zu bleiben -- der real gemeldete Bug."""
+    gruppen = ["G1"]
+    turner = {"G1": ["G1Kind1", "G1Kind2", "G1Kind3"]}
+    trainer = ["Cassi", "Fabian"]
+    set_roster(gruppen, turner, trainer)
+
+    grid_rows = [(17 * 60 + m, 17 * 60 + m + 15) for m in range(0, 120, 15)]  # 17:00-19:00
+    training_date = a.datetime.strptime("2026-08-28", "%Y-%m-%d")
+
+    # Haken gesetzt, aber Notiz-Text enthaelt KEIN erkennbares Timing-Schluesselwort
+    # (z.B. weil der Trainer nur einen Freitext ohne "geht"/"ab"/Uhrzeit eingegeben hat).
+    abmeldungen = [{
+        "datum": "2026-08-28", "name": "Cassi", "gruppe": "",
+        "notiz": "bin heute früher weg", "verspaetung": False, "frueher_gehen": True,
+    }]
+
+    absences, _late, timing = a.get_absences(abmeldungen, training_date, grid_rows)
+    check("Cassi bleibt NICHT in absences['Trainer'] (weiterhin anwesend)",
+          "Cassi" not in absences.get("Trainer", []), f"{absences}")
+    check("Cassi landet in trainer_timing (Teil-Anwesenheit statt komplett entfernt)",
+          "Cassi" in timing, f"{timing}")
+    check("Richtung wird aus dem Haken als 'frueh' uebernommen (nicht 'spaet')",
+          timing.get("Cassi", {}).get("kind") == "frueh", f"{timing}")
+
+    # Haken gesetzt UND Notiz enthaelt eine konkrete Uhrzeit -> Uhrzeit wird trotzdem
+    # mit uebernommen (der Haken bestimmt nur die Richtung, nicht die Zeitextraktion).
+    abmeldungen2 = [{
+        "datum": "2026-08-28", "name": "Cassi", "gruppe": "",
+        "notiz": "geht ab 18:30", "verspaetung": False, "frueher_gehen": True,
+    }]
+    _absences2, _late2, timing2 = a.get_absences(abmeldungen2, training_date, grid_rows)
+    check("Uhrzeit aus der Notiz wird trotz Haken weiterhin korrekt extrahiert",
+          timing2.get("Cassi", {}).get("time_str") == "18:30", f"{timing2}")
+
+
 if __name__ == "__main__":
     test_regression_grid()
     test_regression_plan_shape()
@@ -430,6 +471,7 @@ if __name__ == "__main__":
     test_geraet_tausch()
     test_partial_trainer_holds_group()
     test_deterministic_timing_parser()
+    test_absences_frueher_gehen_checkbox()
     print()
     if FAILS:
         print(f"{len(FAILS)} FEHLGESCHLAGEN:")
