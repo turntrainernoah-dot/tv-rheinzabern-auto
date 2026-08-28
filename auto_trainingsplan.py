@@ -1974,12 +1974,26 @@ def _parse_command_line(line):
         a, b = _resolve_group_name(m.group("a")), _resolve_group_name(m.group("b"))
         if a and b and a != b:
             return {"typ": "merge", "gruppen": sorted([a, b], key=lambda g: GRUPPEN_ORDER.index(g))}
-    # Verspaetung/Frueher-gehen (z.B. "Cassi geht ab 18:30", "Cassi kommt erst um 18:00"):
-    # bisher wurde so etwas NIE deterministisch erkannt, sondern immer der KI ueberlassen --
-    # schlug die KI fehl (kein Token) oder klassifizierte falsch als Abwesenheit statt Timing,
-    # wurde der Trainer faelschlich komplett aus dem Plan entfernt (Bug 27.08.2026, siehe
-    # Kommentar in build_trainer_plan). Nutzt dieselbe Erkennung wie die strukturierten
-    # Abmeldungen (get_absences()), damit beide Wege konsistent bleiben.
+    # Verspaetung/Frueher-gehen MIT eindeutiger Ziffern-Uhrzeit (z.B. "Cassi
+    # geht ab 18:30", "Cassi muss um 18 Uhr los"): bisher wurde so etwas NIE
+    # deterministisch erkannt, sondern immer der KI ueberlassen -- schlug die
+    # KI fehl (kein Token) oder klassifizierte falsch als Abwesenheit statt
+    # Timing, wurde der Trainer faelschlich komplett aus dem Plan entfernt
+    # (Bug 27.08.2026, siehe Kommentar in build_trainer_plan).
+    #
+    # WICHTIG (Noah 28.08.2026, zu Recht): das hier ist NUR ein kostenloser
+    # Schnellpfad fuer den eindeutigen Digit-Fall, kein Ersatz fuer die KI.
+    # Wird KEINE Ziffern-Uhrzeit gefunden -- z.B. "so gegen halb sieben",
+    # "nach dem Abendessen" -- wird bewusst NICHTS deterministisch angewendet
+    # (return None), sondern die Notiz bleibt fuer die KI liegen. Eine
+    # fruehere Fassung wandte hier bei erkanntem Schluesselwort aber fehlender
+    # Uhrzeit trotzdem "kein Uhrzeit" an (blockierte dann nur die letzte
+    # Rasterzeile) -- das haette echte, nur nicht als Ziffer geschriebene
+    # Uhrzeiten (die die KI durchaus verstehen und normalisieren kann)
+    # stillschweigend falsch/unvollstaendig behandelt statt sie der KI zu
+    # ueberlassen. Nutzt fuer die Ziffern-Erkennung dieselbe Funktion wie die
+    # strukturierten Abmeldungen (get_absences()), damit beide Wege konsistent
+    # bleiben.
     re_time = _re_trainer_timing()
     m = re_time.match(s) if re_time else None
     if m:
@@ -1995,10 +2009,10 @@ def _parse_command_line(line):
         if full and others and re.search(r'\b(?:' + others + r')\b', rest, re.IGNORECASE):
             return None
         kind, tmin = parse_trainer_timing(rest)
-        if full and is_timing_note(rest, kind, tmin):
+        if full and tmin is not None and is_timing_note(rest, kind, tmin):
             if kind is None:
                 kind = "spaet"
-            tstr = f"{tmin//60:02d}:{tmin%60:02d}" if tmin is not None else None
+            tstr = f"{tmin//60:02d}:{tmin%60:02d}"
             return {"typ": "trainer_timing", "trainer": full, "kind": kind, "time_str": tstr}
     return None
 
