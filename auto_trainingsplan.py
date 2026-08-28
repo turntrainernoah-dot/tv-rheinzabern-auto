@@ -638,6 +638,8 @@ def _extract_time_min(notiz):
             return h*60
     return None
 
+_RE_MUSS_FRUEH = re.compile(r'\bmuss\b.{0,25}?\b(?:los|weg|gehen)\b')
+
 def parse_trainer_timing(notiz):
     """Richtung ('spaet'=kommt spaeter / 'frueh'=geht frueher / None) + Uhrzeit-Min."""
     s = (notiz or "").lower()
@@ -646,7 +648,7 @@ def parse_trainer_timing(notiz):
                 "eher", "nur bis", "muss los", "muss weg", "muss gehen", "vorzeitig"]
     spaet_kw = ["später", "spaeter", "verspät", "verspaet", "komme", "kommt", "erst",
                 "etwas spät", "bisschen spät", "verspätung", "verzögert"]
-    is_frueh = any(k in s for k in frueh_kw)
+    is_frueh = any(k in s for k in frueh_kw) or bool(_RE_MUSS_FRUEH.search(s))
     is_spaet = any(k in s for k in spaet_kw)
     if "bis" in s and t is not None:
         return "frueh", t
