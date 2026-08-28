@@ -408,6 +408,15 @@ def test_deterministic_timing_parser():
     check("echte Krankmeldung ohne Timing-Schluesselwort bleibt unerkannt (-> KI, nicht faelschlich Timing)",
           a._parse_command_line("Cassi ist krank") is None)
 
+    # Noah 28.08.2026, zu Recht: der deterministische Parser soll KEINE
+    # Zeiten "raten" -- eine kolloquiale Uhrzeit ohne Ziffern (die er nicht
+    # verstehen kann, eine KI aber durchaus) muss der KI ueberlassen bleiben,
+    # statt mit einer falschen/fehlenden Uhrzeit trotzdem angewendet zu werden.
+    check("kolloquiale Uhrzeit ohne Ziffern ('halb sieben') bleibt der KI ueberlassen",
+          a._parse_command_line("Cassi geht heute früher, so gegen halb sieben") is None)
+    check("Schluesselwort ohne jede Uhrzeit bleibt ebenfalls der KI ueberlassen (keine Rate-Anwendung)",
+          a._parse_command_line("Cassi geht früher") is None)
+
 
 if __name__ == "__main__":
     test_regression_grid()
