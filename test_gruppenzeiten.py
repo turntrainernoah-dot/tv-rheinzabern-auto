@@ -388,6 +388,26 @@ def test_deterministic_timing_parser():
     check("echte volle Abwesenheit bleibt weiterhin 'trainer_abwesend' (keine Regression)",
           cmd4 and cmd4.get("typ") == "trainer_abwesend", f"{cmd4}")
 
+    # Weitere reale Formulierungen (beim Review am 28.08.2026 nachgetestet):
+    # "muss ... los/weg/gehen" mit eingeschobener Uhrzeit ("muss UM 18:30 los")
+    # matchte urspruenglich NICHT (die Schluesselwortliste erwartete die
+    # zusammenhaengende Phrase "muss los", nicht durch die Uhrzeit getrennt).
+    for text, exp_kind, exp_time in [
+        ("Cassi muss um 18:30 los", "frueh", "18:30"),
+        ("Cassi muss leider um 18 Uhr weg", "frueh", "18:00"),
+        ("Cassi muss heute schon um 18:30 gehen", "frueh", "18:30"),
+        ("Cassi geht früher ca 18:30", "frueh", "18:30"),
+        ("Cassi geht ab ca 18 Uhr", "frueh", "18:00"),
+        ("Cassi kommt später, ca 18 Uhr", "spaet", "18:00"),
+    ]:
+        c = a._parse_command_line(text)
+        check(f"'{text}' -> trainer_timing/{exp_kind}/{exp_time}",
+              c is not None and c.get("typ") == "trainer_timing"
+              and c.get("kind") == exp_kind and c.get("time_str") == exp_time, f"{c}")
+
+    check("echte Krankmeldung ohne Timing-Schluesselwort bleibt unerkannt (-> KI, nicht faelschlich Timing)",
+          a._parse_command_line("Cassi ist krank") is None)
+
 
 if __name__ == "__main__":
     test_regression_grid()
