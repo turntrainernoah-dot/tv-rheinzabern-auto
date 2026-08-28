@@ -1051,11 +1051,10 @@ def _build_lowstaff_plan(available, grid_rows, grid_phase, history, immer_spring
     return TRAINER_PLAN, {}, anmerkungen
 
 
-def build_trainer_plan(absences, grid_rows, grid_phase, trainer_timing=None, trainer_roles_history=None):
+def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=None):
     abwesend  = absences.get("Trainer", [])
     available = [t for t in ALLE_TRAINER if t not in abwesend]
     n = len(available)
-    trainer_timing = trainer_timing or {}
     trainer_roles_history = trainer_roles_history or {}
 
     # anwesende Kinder je Gruppe
@@ -1071,12 +1070,19 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_timing=None, tra
         anmerkungen.insert(0, "ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
         return {t: None for t in ALLE_TRAINER}, {}, anmerkungen
 
-    # Vollzeit-Trainer (halten eine Gruppe komplett) vs. partielle (frueh/spaet).
-    # Ein frueh gehender / spaet kommender Trainer darf keine Gruppe ALLEIN halten
-    # -> zaehlt nicht als Halter, wird Springer; die Vollzeit-Trainer uebernehmen.
-    partial_set  = {t for t in available if t in trainer_timing}
-    full_holders = [t for t in available if t not in partial_set]
-    holders_pool = full_holders if full_holders else list(available)   # Notlage-Fallback
+    # Bugfix 27.08.2026 (Noah: "Cassi geht ab 18:30, der Plan nimmt sie aber
+    # komplett raus, soll aber moeglichst lange eine Gruppe uebernehmen"):
+    # frueher gehende/spaeter kommende Trainer sind normale Halter-Kandidaten,
+    # NICHT von vornherein ausgeschlossen -- apply_timing_coverage() (siehe
+    # main()) uebernimmt danach automatisch die geblockten Randzeilen ihrer
+    # Gruppe an einen freien Trainer, apply_timing_blocks() faerbt sie rot mit
+    # "kommt spaeter"/"geht frueher". Vorher wurden partielle Trainer hier
+    # praeventiv aus dem Halter-Pool entfernt, sobald irgendein Vollzeit-
+    # Trainer da war -- das machte die Coverage-Mechanik faktisch wirkungslos
+    # (ein Trainer, der nie eine Gruppe bekommt, braucht auch keine Vertretung)
+    # und war zusaetzlich inkonsistent mit build_ki_einteilung(), das
+    # trainer_timing schon vorher gar nicht ausgeschlossen hat.
+    holders_pool = list(available)
 
     MIN_KIDS = 3   # jede Gruppe braucht >= 3 anwesende Turner, sonst zusammenlegen
 
@@ -1578,7 +1584,7 @@ Gib GENAU dieses JSON zurueck (keine weiteren Felder, kein Text drumherum):
 
 Regeln:
 - ziel.typ: KEIN Datum/Zeitpunkt genannt -> "naechstes" (gilt NUR fuer genau das naechste Training, NIE Dauerauftrag). Konkretes Datum (z.B. "am 14.10") -> "datum" mit datum. "naechstes Mal <Geraet>" / "wenn wir <Geraet> turnen" -> "naechstes_geraet" mit geraet. Wenn ziel unklar -> typ "naechstes".
-- "kommt spaeter"/"erst um X" -> timing richtung "spaet"; "geht frueher"/"muss um X weg/los" -> "frueh". uhrzeit als HH:MM oder null.
+- "kommt spaeter"/"erst um X"/"ist ab X (wieder) da" -> timing richtung "spaet"; "geht frueher"/"muss um X weg/los"/"geht ab X"/"nur bis X da"/"ist ab X weg" -> "frueh". uhrzeit als HH:MM oder null. WICHTIG: jede Nennung einer Uhrzeit zusammen mit einem Trainer, der teilweise da ist, IMMER als timing eintragen, NIEMALS als abwesend_trainer -- abwesend_trainer ist ausschliesslich fuer einen Trainer, der am GESAMTEN Training gar nicht da ist.
 - "GX entfaellt"/"faellt aus" -> gruppe_entfall ["GX"].
 - Geraetewahl "wir turnen X und Y" -> geraete {"g1":X,"g2":Y}, sonst geraete null.
 - Gruppen zusammenlegen OHNE genannten Trainer (z.B. "G3 und G4 zusammenlegen") -> merges [["G3","G4"]]. MIT genanntem Trainer ("Fabian macht G1+G2") -> zuteilung {trainer, gruppe:"G1+G2"}. "ich mache ..." -> trainer = der Schreiber. gruppe darf "Springer" oder "GX+GY" sein.
@@ -1589,7 +1595,7 @@ Regeln:
 - "loesche/entferne alle (bisherigen) Anmerkungen", "setze zurueck", "reset", "mach alles rueckgaengig" -> reset: true (alle bisherigen Vorgaben fuer das Ziel-Datum werden entfernt).
 - notiz_neu: Setze es bei JEDER Aenderung des Anmerkungs-TEXTES — hinzufuegen ("fuege hinzu ..."), loeschen ("loesche die Zeile ..."), umformulieren oder ersetzen ("aendere X zu Y"). Gib dann IMMER den KOMPLETTEN neuen Anmerkungstext des Ziel-Datums zurueck: bestehende Zeilen aus der Referenz uebernehmen und die Aenderung anwenden. Bei reinen Struktur-/Plan-Aktionen ohne Text-Aenderung notiz_neu = null.
 - WICHTIG: gruppe_entfall/timing/zuteilung/merges/geraete/reset NUR aus der AKTUELLEN Trainer-Anmerkung ableiten, NIEMALS aus der Referenz der aktuellen Anmerkungen.
-- abwesend_kinder / wieder_da_kinder: einzelne Kinder ab-/wieder anmelden (nur Namen aus der Kinderliste). abwesend_trainer: Trainer die fehlen.
+- abwesend_kinder / wieder_da_kinder: einzelne Kinder ab-/wieder anmelden (nur Namen aus der Kinderliste). abwesend_trainer: NUR Trainer, die das GESAMTE Training ueber fehlen (Urlaub, krank, Spaetschicht o.ae.) -- niemals fuer einen Trainer, der nur teilweise da ist, auch wenn "fehlt ab X" o.ae. klingt wie eine Abwesenheit (siehe timing-Regel oben).
 - einteilung: KOMPLETTE Zuordnung {Trainer: Label}, wenn die Anweisung Trainer den Gruppen zuordnet (z.B. "Trainer A Gruppe 1, Trainer B Gruppe 2, Rest Springer"). Label = eine der konfigurierten Gruppen, "GX+GY" (mehrere Gruppen durch + verbunden) oder "Springer". Sonst {} = automatische Einteilung.
 - Antworte ausschliesslich mit dem JSON-Objekt."""
 
@@ -1888,6 +1894,17 @@ def _re_trainer_absent():
 def _re_trainer_present():
     return _re_trainer(r'\s+(?:ist\s+)?(?:anwesend|wieder\s+da|kommt(?:\s+doch)?|doch\s+da)')
 
+def _re_trainer_timing():
+    """Trainer-Name gefolgt von beliebigem Resttext -- der Resttext wird
+    danach mit derselben parse_trainer_timing()/is_timing_note()-Erkennung
+    geprueft, die auch fuer die strukturierten Abmeldungen gilt (siehe
+    get_absences()). Bewusst als letzter Versuch NACH allen spezifischeren
+    Mustern (assign/abwesend/anwesend/entfall/merge): ein Text, der schon
+    eines der spezifischeren Muster trifft, kommt hier nie an, ein Text ohne
+    erkennbare Verspaetungs-/Frueher-gehen-Woerter bleibt weiterhin fuer die
+    KI liegen (is_timing_note() liefert dann False, siehe _parse_command_line)."""
+    return _re_trainer(r'\s+(?P<rest>.+)')
+
 _RE_GRUPPE_ENTFALL = re.compile(
     r'^\s*(?P<g>[\wÄÖÜäöüß]+)\s+(?:entf(?:ae|ä)llt|f(?:ae|ä)llt\s+aus)\s*[.!]?\s*$',
     re.IGNORECASE,
@@ -1955,6 +1972,32 @@ def _parse_command_line(line):
         a, b = _resolve_group_name(m.group("a")), _resolve_group_name(m.group("b"))
         if a and b and a != b:
             return {"typ": "merge", "gruppen": sorted([a, b], key=lambda g: GRUPPEN_ORDER.index(g))}
+    # Verspaetung/Frueher-gehen (z.B. "Cassi geht ab 18:30", "Cassi kommt erst um 18:00"):
+    # bisher wurde so etwas NIE deterministisch erkannt, sondern immer der KI ueberlassen --
+    # schlug die KI fehl (kein Token) oder klassifizierte falsch als Abwesenheit statt Timing,
+    # wurde der Trainer faelschlich komplett aus dem Plan entfernt (Bug 27.08.2026, siehe
+    # Kommentar in build_trainer_plan). Nutzt dieselbe Erkennung wie die strukturierten
+    # Abmeldungen (get_absences()), damit beide Wege konsistent bleiben.
+    re_time = _re_trainer_timing()
+    m = re_time.match(s) if re_time else None
+    if m:
+        full = _first_to_full(m.group("name"))
+        rest = m.group("rest")
+        # Wird noch ein ANDERER Trainer erwaehnt (z.B. "Cassi geht ab 18:30,
+        # Fabian macht G3+G4"), ist das vermutlich eine zusammengesetzte
+        # Anweisung mit mehreren Anteilen -- das greedy rest-Muster wuerde den
+        # zweiten Teil sonst stillschweigend in Cassis Notiz verschlucken statt
+        # ihn anzuwenden. Lieber komplett der KI ueberlassen (die den ganzen
+        # Satz auf einmal sieht), statt nur die Haelfte umzusetzen.
+        others = _name_alt(t.split()[0] for t in ALLE_TRAINER if t and _first_to_full(t.split()[0]) != full)
+        if full and others and re.search(r'\b(?:' + others + r')\b', rest, re.IGNORECASE):
+            return None
+        kind, tmin = parse_trainer_timing(rest)
+        if full and is_timing_note(rest, kind, tmin):
+            if kind is None:
+                kind = "spaet"
+            tstr = f"{tmin//60:02d}:{tmin%60:02d}" if tmin is not None else None
+            return {"typ": "trainer_timing", "trainer": full, "kind": kind, "time_str": tstr}
     return None
 
 def _apply_command(cmd, fe):
@@ -1998,6 +2041,14 @@ def _apply_command(cmd, fe):
         fa = fe.setdefault("fixed_absences", {})
         if cmd["trainer"] in fa.get("Trainer", []):
             fa["Trainer"].remove(cmd["trainer"])
+    elif typ == "trainer_timing":
+        # Landet in derselben Struktur wie eine KI-erkannte Verspaetung
+        # (ki["timing"], siehe ki_timing_to_dict()) -- ein Trainer bleibt
+        # dadurch eingeteilt (NICHT abwesend), nur seine Randzeiten werden
+        # spaeter rot geblockt und an einen freien Trainer uebergeben.
+        existing = [x for x in (ki.get("timing") or []) if x.get("trainer") != cmd["trainer"]]
+        existing.append({"trainer": cmd["trainer"], "richtung": cmd["kind"], "uhrzeit": cmd["time_str"]})
+        ki["timing"] = existing
 
 def preprocess_deterministic_annotations(sftp, anmerkungen_server, fixed_entries):
     """Erkennt deterministisch parsbare Kommando-Anmerkungen, wendet sie auf
@@ -2434,7 +2485,7 @@ def main():
         else:
             _troles_hist = _load_trainer_roles_history(state, exclude_date=datum_kurz)
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, grid_rows, grid_phase, trainer_timing,
+                absences, grid_rows, grid_phase,
                 trainer_roles_history=_troles_hist,
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)
@@ -2604,7 +2655,7 @@ def main():
         else:
             _troles_hist = _load_trainer_roles_history(state, exclude_date=datum_kurz)
             trainer_plan, sondertiming, anmerkungen = build_trainer_plan(
-                absences, grid_rows, grid_phase, trainer_timing,
+                absences, grid_rows, grid_phase,
                 trainer_roles_history=_troles_hist,
             )
             trainer_plan = apply_timing_coverage(trainer_plan, trainer_timing)

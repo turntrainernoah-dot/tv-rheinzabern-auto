@@ -311,6 +311,84 @@ def test_geraet_tausch():
               f"{colors_at_row}")
 
 
+# ════════════════════════════════════════════════════════════════
+# 6) Bugfix 27.08.2026: Teilzeit-Trainer (kommt spaeter/geht frueher) wird
+#    nicht mehr komplett aus dem Plan entfernt, sondern haelt eine Gruppe.
+# ════════════════════════════════════════════════════════════════
+def test_partial_trainer_holds_group():
+    """build_trainer_plan schloss Teilzeit-Trainer (in trainer_timing) bisher
+    praeventiv aus dem Halter-Pool aus, sobald irgendein Vollzeit-Trainer da
+    war -- dadurch bekam eine Gruppe gar keinen Halter und der Teilzeit-
+    Trainer wurde Springer statt seine Gruppe (mit spaeterer Uebergabe der
+    Randzeiten via apply_timing_coverage) zu halten. Seit dem Fix nimmt
+    build_trainer_plan gar keine trainer_timing-Info mehr entgegen -- alle
+    verfuegbaren Trainer sind gleichwertige Halter-Kandidaten, konsistent mit
+    build_ki_einteilung (das trainer_timing nie ausgeschlossen hat)."""
+    gruppen = ["G1", "G2", "G3"]
+    turner = {g: [f"{g}Kind{i}" for i in range(1, 6)] for g in gruppen}
+    trainer = ["Trainer A", "Trainer B", "Trainer C"]
+    set_roster(gruppen, turner, trainer)
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+    plan, _s, anm = a.build_trainer_plan(no_absences(gruppen), grid_rows, grid_phase)
+    holders = {t: c for t, c in plan.items() if c and any(ck in ("g1_blau", "g2_orange") for _, ck in c)}
+    check("alle 3 Gruppen bekommen einen Halter (kein Trainer wird praeventiv ausgeschlossen)",
+          len(holders) == 3, f"{holders.keys()}")
+    check("kein Trainer landet auf None, obwohl genug Turner/Gruppen da sind",
+          all(plan[t] is not None for t in trainer), f"{plan}")
+
+    # apply_timing_coverage/apply_timing_blocks (unveraendert) uebernehmen
+    # danach korrekt die Randzeit eines haltenden Teilzeit-Trainers.
+    last_row = len(grid_rows) - 1
+    holder_c = plan.get("Trainer C")
+    if holder_c and any(ck in ("g1_blau", "g2_orange") for _, ck in holder_c):
+        trainer_timing = {"Trainer C": {"kind": "frueh", "time_min": None, "time_str": None,
+                                         "notiz": "geht frueher", "blocked": [last_row]}}
+        plan2 = {t: (list(c) if c else c) for t, c in plan.items()}
+        plan2 = a.apply_timing_coverage(plan2, trainer_timing)
+        plan2 = a.apply_timing_blocks(plan2, trainer_timing)
+        check("Trainer C bleibt eingeteilt (nicht None)", plan2["Trainer C"] is not None)
+        check("Trainer C's letzte Zeile ist rot 'geht frueher' markiert (sonder)",
+              plan2["Trainer C"][last_row][1] == "sonder", f"{plan2['Trainer C']}")
+
+
+def test_deterministic_timing_parser():
+    """Bugfix 27.08.2026: Freitext-Anmerkungen wie 'Cassi geht ab 18:30'
+    wurden bisher NIE deterministisch erkannt, sondern immer der KI ueber-
+    lassen -- schlug die KI fehl oder klassifizierte faelschlich als
+    Abwesenheit statt Timing, wurde der Trainer komplett aus dem Plan
+    entfernt (der eigentliche gemeldete Bug). Jetzt erkennt bereits der
+    deterministische Kommando-Parser (laeuft immer, auch ohne GH_MODELS_TOKEN)
+    die gaengigen Formulierungen."""
+    gruppen = ["G1"]
+    turner = {"G1": ["G1Kind1", "G1Kind2", "G1Kind3"]}
+    trainer = ["Cassi", "Fabian"]
+    set_roster(gruppen, turner, trainer)
+
+    cmd = a._parse_command_line("Cassi geht ab 18:30")
+    check("'Cassi geht ab 18:30' wird als trainer_timing erkannt",
+          cmd is not None and cmd.get("typ") == "trainer_timing", f"{cmd}")
+    check("Richtung korrekt als 'frueh' erkannt", cmd and cmd.get("kind") == "frueh", f"{cmd}")
+    check("Uhrzeit korrekt als 18:30 erkannt", cmd and cmd.get("time_str") == "18:30", f"{cmd}")
+
+    cmd2 = a._parse_command_line("Cassi kommt erst um 18:00")
+    check("'kommt erst um X' wird als 'spaet' erkannt", cmd2 and cmd2.get("kind") == "spaet", f"{cmd2}")
+
+    cmd3 = a._parse_command_line("Cassi geht ab 18:30, Fabian macht G1")
+    check("Zusammengesetzte Zeile mit zweitem Trainer wird NICHT deterministisch geparst (-> KI)",
+          cmd3 is None, f"{cmd3}")
+
+    fe = {}
+    a._apply_command(cmd, fe)
+    check("_apply_command setzt manuell_bearbeitet", fe.get("manuell_bearbeitet") is True)
+    check("_apply_command schreibt ki.timing in derselben Struktur wie der KI-Pfad",
+          fe.get("ki", {}).get("timing") == [{"trainer": "Cassi", "richtung": "frueh", "uhrzeit": "18:30"}],
+          f"{fe}")
+
+    cmd4 = a._parse_command_line("Cassi abwesend")
+    check("echte volle Abwesenheit bleibt weiterhin 'trainer_abwesend' (keine Regression)",
+          cmd4 and cmd4.get("typ") == "trainer_abwesend", f"{cmd4}")
+
+
 if __name__ == "__main__":
     test_regression_grid()
     test_regression_plan_shape()
@@ -321,6 +399,8 @@ if __name__ == "__main__":
     test_ki_path_parity()
     test_edge_cases()
     test_geraet_tausch()
+    test_partial_trainer_holds_group()
+    test_deterministic_timing_parser()
     print()
     if FAILS:
         print(f"{len(FAILS)} FEHLGESCHLAGEN:")
