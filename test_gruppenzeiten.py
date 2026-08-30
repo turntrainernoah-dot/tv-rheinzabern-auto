@@ -113,7 +113,41 @@ def test_group_counts():
 # ════════════════════════════════════════════════════════════════
 # 3) Trainerzahl 1..8, 0..3 immer_springer, Notfall-Durchbruch
 # ════════════════════════════════════════════════════════════════
+def _max_merge_down(gruppen, gruppen_zeiten, target_units):
+    """Simuliert dieselbe (nur zeit-kompatible) Zusammenlegung wie
+    build_trainer_plan, um zu bestimmen, wie weit sich `gruppen` auf
+    `target_units` reduzieren LAESST (kann mehr bleiben, wenn kein
+    kompatibler Merge-Partner mehr existiert)."""
+    units = [[g] for g in gruppen]
+    def compatible(x, y):
+        return all(a.zeiten_kompatibel(gruppen_zeiten, p, q) for p in x for q in y)
+    while len(units) > max(1, target_units):
+        best = None
+        for i in range(len(units)):
+            for j in range(i + 1, len(units)):
+                if compatible(units[i], units[j]):
+                    best = (i, j)
+                    break
+            if best:
+                break
+        if not best:
+            break
+        i, j = best
+        units[i] = units[i] + units[j]
+        del units[j]
+    return len(units)
+
 def test_trainer_counts_and_immer_springer():
+    """Bugfix 30.08.2026 (Noah: 'Andy ist als Dauer-Springer eingeteilt und hat
+    trotzdem G3+G4'): Diese Testfunktion erwartete urspruenglich, dass ein
+    immer_springer-Trainer IMMER nachgezogen wird, sobald weniger normale
+    Trainer als Gruppen da sind -- selbst wenn zwei zeit-kompatible Gruppen
+    stattdessen haetten zusammengelegt werden koennen. Genau das war der
+    gemeldete Bug: build_trainer_plan zog den Springer-Trainer nach, OBWOHL
+    ein Merge ausgereicht haette. Jetzt gilt: Zusammenlegen hat Vorrang,
+    immer_springer wird nur gezogen, wenn selbst nach bestmoeglichem
+    (zeit-kompatiblem) Merge noch mehr Einheiten als normale Trainer uebrig
+    sind (siehe build_trainer_plan, Abschnitt '2) Nicht mehr Einheiten...')."""
     gruppen = ["G1", "G2", "G3"]
     turner = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
     zeiten = default_zeiten_for_all(gruppen)
@@ -126,15 +160,18 @@ def test_trainer_counts_and_immer_springer():
             plan, sonder, anm = a.build_trainer_plan(no_absences(gruppen), grid_rows, grid_phase)
             assigned_groups = {t for t, c in plan.items() if c and any(ck in ("g1_blau", "g2_orange") for _, ck in c)}
             non_immer = [t for t in trainer if t not in immer]
-            # Wenn genug Nicht-Springer da sind, sollen NUR die eine Gruppe bekommen ...
-            if len(non_immer) >= len(gruppen):
-                check(f"n={n_trainer},immer={n_immer}: immer_springer bekommt keine Gruppe wenn genug andere da",
+            merge_target = len(non_immer) if non_immer else n_trainer
+            expected_units = _max_merge_down(gruppen, zeiten, merge_target)
+            if len(non_immer) >= expected_units:
+                # Nach bestmoeglichem Merge reichen die normalen Trainer allein aus ->
+                # immer_springer bleibt komplett aussen vor.
+                check(f"n={n_trainer},immer={n_immer}: immer_springer bekommt keine Gruppe, wenn Merge reicht",
                       assigned_groups.isdisjoint(immer), f"{assigned_groups} vs immer={immer}")
             else:
-                # ... sonst muessen immer_springer-Trainer als letzte Instanz einspringen,
-                # damit trotzdem moeglichst viele Gruppen eine eigene Einheit bekommen.
-                need = min(len(gruppen), n_trainer)
-                check(f"n={n_trainer},immer={n_immer}: Notfall zieht genug Trainer (inkl. Springer-Flag) nach",
+                # ... sonst muss immer_springer als letzte Instanz einspringen, aber nur
+                # so viel wie durch Merge nicht mehr abgefangen werden konnte.
+                need = min(expected_units, n_trainer)
+                check(f"n={n_trainer},immer={n_immer}: Notfall zieht nur so viel nach wie noetig (nach bestmoeglichem Merge)",
                       len(assigned_groups) == need, f"got {len(assigned_groups)} need {need}")
 
 # ════════════════════════════════════════════════════════════════
@@ -459,6 +496,95 @@ def test_absences_frueher_gehen_checkbox():
           timing2.get("Cassi", {}).get("time_str") == "18:30", f"{timing2}")
 
 
+def test_rotation_ueberlebt_wechselnde_merges():
+    """Bugfix 30.08.2026 (Noah: 'fuehlt sich an, als haette Noah immer G1 und
+    Andy immer G3+G4'): _assign_units_fair() verglich Rollen-Labels bisher
+    EXAKT ('G3+G4' == 'G3+G4'). Wich die Zusammenlegung eine Woche ab (z.B.
+    nur 'G3' statt 'G3+G4', weil an dem Tag genug Kinder da waren), fand die
+    Historie nie einen Treffer -- der Score blieb dauerhaft -999 (nie), und
+    der nachfolgende stabile sort() fiel auf die Config-Reihenfolge der
+    Trainer zurueck. Das erzeugte ein rein zufaelliges, aber de-facto
+    STATISCHES Zuteilungsmuster, obwohl die Funktion 'Fairness' verspricht.
+    Test: direkter Beleg, dass eine Historie mit dem Label 'G3' jetzt auch
+    fuer die Einheit 'G3+G4' als Treffer zaehlt (Ueberschneidung statt
+    exakter Gleichheit)."""
+    history = {"A": [{"date": "20.08.26", "role": "G3"}]}
+    # B hat noch nie G3/G4 gehabt -> sollte bei der Zuteilung von 'G3+G4'
+    # bevorzugt werden (A hatte zuletzt Ueberschneidung mit G3).
+    assign, springers = a._assign_units_fair(["G1", "G3+G4"], ["A", "B"], history, set())
+    check("Ueberschneidung 'G3' <-> 'G3+G4' wird erkannt (B bekommt die Merge-Einheit, nicht A)",
+          assign.get("B") == "G3+G4" and assign.get("A") == "G1", f"{assign}")
+
+    # Mehrwoechige Simulation: G3/G4 werden mal einzeln, mal zusammengelegt
+    # gefahren (schwankende Kinderzahl) -- ueber 8 Trainings soll sich die
+    # G3/G4-Rolle auf beide Trainer verteilen, nicht bei einem haengen bleiben.
+    gruppen = ["G1", "G2", "G3", "G4"]
+    turner_voll = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
+    trainer = ["Noah", "Andy", "T3", "T4"]
+    zeiten = default_zeiten_for_all(gruppen)  # G1/G2 Standard, G3/G4 versetzt+kompatibel zueinander
+    set_roster(gruppen, turner_voll, trainer, zeiten=zeiten)
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+
+    state = {"plan_data": {}}
+    g3_g4_holder_counts = {"Noah": 0, "Andy": 0, "T3": 0, "T4": 0}
+    for week in range(8):
+        # jede zweite Woche ist G4 zu klein (<3 Kinder) -> Zwangsmerge mit G3;
+        # sonst laufen alle 4 Gruppen einzeln.
+        if week % 2 == 0:
+            absences = no_absences(gruppen)
+        else:
+            absences = no_absences(gruppen)
+            absences["G4"] = turner_voll["G4"][:3]  # nur noch 2 uebrig -> <3, Merge-Zwang
+        dk = f"{10+week:02d}.08.26"
+        hist = a._load_trainer_roles_history(state, exclude_date=dk)
+        plan, _s, _anm = a.build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=hist)
+        roles = a._extract_trainer_roles(plan)
+        state["plan_data"][dk] = {"trainer_roles": roles}
+        for t, r in roles.items():
+            if r and set(r.split("+")) & {"G3", "G4"}:
+                g3_g4_holder_counts[t] += 1
+
+    total_g3_g4 = sum(g3_g4_holder_counts.values())
+    max_share = max(g3_g4_holder_counts.values()) / total_g3_g4 if total_g3_g4 else 0
+    check("G3/G4-Rolle verteilt sich ueber mehrere Trainer (kein Trainer haelt sie fast immer)",
+          max_share <= 0.6, f"{g3_g4_holder_counts}")
+
+
+def test_entfall_verarbeitet_alle_termine_nicht_nur_naechsten():
+    """Bugfix 30.08.2026 (Noah: Training vom 26.08. war ausgefallen, stand aber
+    nicht als Entfall im Trainingsplan): main() prüfte trainingsentfall.json
+    bisher NUR gegen active_training_date() (das naechste anstehende Training).
+    Jeder andere Eintrag -- v.a. ein bereits vergangenes, nachtraeglich als
+    Entfall markiertes Training -- wurde nie verarbeitet. _publish_entfall_for()
+    kapselt die Veroeffentlichung jetzt pro Datum, damit main() ALLE Eintraege
+    aus trainingsentfall.json durchgehen kann. Hier: reiner Verhaltenstest ohne
+    echtes SFTP -- prueft nur, dass die Datumsberechnung (dd.mm.yy/dd.mm.yyyy/
+    Wochentag) fuer ein beliebiges (auch vergangenes) ISO-Datum korrekt ist und
+    _publish_entfall_for bei bereits korrekt veroeffentlichtem Stand ein zweites
+    Mal nichts tut (kein erneuter Upload/keine erneute WhatsApp-Nachricht)."""
+    calls = {"publish": 0, "whatsapp": 0}
+    orig_publish, orig_wa, orig_exists = a.publish_entfall, a.send_whatsapp, a.plan_exists
+    a.publish_entfall = lambda *args, **kwargs: calls.__setitem__("publish", calls["publish"] + 1)
+    a.send_whatsapp = lambda *args, **kwargs: calls.__setitem__("whatsapp", calls["whatsapp"] + 1)
+    a.plan_exists = lambda sftp, dk: True
+    try:
+        state = {}
+        entfall_published = []
+        fixed_entries = {}
+        # Datum in der Vergangenheit (26.08.2026, ein Mittwoch) -- genau der
+        # gemeldete Fall: naechstes aktives Training ist laengst ein anderes.
+        did = a._publish_entfall_for(None, state, fixed_entries, "2026-08-26", entfall_published)
+        check("erste Veroeffentlichung eines vergangenen Entfall-Datums findet statt",
+              did is True and calls["publish"] == 1 and calls["whatsapp"] == 1)
+        check("Datum korrekt als dd.mm.yy in entfall_published gemerkt", "26.08.26" in entfall_published)
+
+        did2 = a._publish_entfall_for(None, state, fixed_entries, "2026-08-26", entfall_published)
+        check("zweiter Aufruf fuer denselben, bereits veroeffentlichten Entfall tut nichts mehr",
+              did2 is False and calls["publish"] == 1 and calls["whatsapp"] == 1)
+    finally:
+        a.publish_entfall, a.send_whatsapp, a.plan_exists = orig_publish, orig_wa, orig_exists
+
+
 if __name__ == "__main__":
     test_regression_grid()
     test_regression_plan_shape()
@@ -472,6 +598,8 @@ if __name__ == "__main__":
     test_partial_trainer_holds_group()
     test_deterministic_timing_parser()
     test_absences_frueher_gehen_checkbox()
+    test_rotation_ueberlebt_wechselnde_merges()
+    test_entfall_verarbeitet_alle_termine_nicht_nur_naechsten()
     print()
     if FAILS:
         print(f"{len(FAILS)} FEHLGESCHLAGEN:")

@@ -13,7 +13,7 @@ Ablauf:
   - Trainer-Wechsel → E-Mail, manuell prüfen
 """
 
-import json, hashlib, os, re, sys, tempfile, shutil, subprocess, urllib.request, urllib.parse
+import json, hashlib, os, re, sys, tempfile, shutil, subprocess, itertools, urllib.request, urllib.parse
 from datetime import date, timedelta, datetime, timezone
 
 import paramiko
@@ -472,6 +472,44 @@ def remove_plan_files(sftp, datum_kurz):
             print(f"[ENTFALL] Entfernt: trainingspläne/{datum_kurz}_Trainingsplan.{ext}")
         except Exception:
             pass
+
+def _publish_entfall_for(sftp, state, fixed_entries, iso_date, entfall_published):
+    """Veroeffentlicht (falls noetig) den Entfall-Hinweis fuer EIN einzelnes Datum aus
+    trainingsentfall.json. Ausgelagert aus main(), weil der Entfall-Check bisher nur
+    das naechste anstehende Training (active_training_date()) prueft -- jeder andere
+    Eintrag in trainingsentfall.json (z.B. ein bereits vergangenes, verspaetet
+    markiertes Training) wurde dadurch nie veroeffentlicht, siehe main(). Gibt True
+    zurueck, wenn tatsaechlich (neu) veroeffentlicht wurde."""
+    try:
+        d = datetime.strptime(iso_date, "%Y-%m-%d").date()
+    except Exception:
+        return False
+    dk    = fmt_datum_kurz(d)
+    datum = fmt_datum(d)
+    wtag  = wochentag_name(d)
+    fixed = fixed_entries.get(dk, {})
+    notiz = (fixed.get("notiz", "") or "").strip()
+    nhash = hashlib.md5(notiz.encode("utf-8")).hexdigest()
+    notiz_store   = state.setdefault("entfall_notiz_hash", {})
+    notiz_changed = notiz_store.get(dk) != nhash
+    was_published = dk in entfall_published
+    if was_published and plan_exists(sftp, dk) and not notiz_changed:
+        return False
+    publish_entfall(sftp, datum, dk, wtag, notiz)
+    notiz_store[dk] = nhash
+    if dk not in entfall_published:
+        entfall_published.append(dk)
+    if dk not in state.setdefault("generated_plans", []):
+        state["generated_plans"].append(dk)
+    state.get("plan_data", {}).pop(dk, None)  # alten Plan-Hash verwerfen
+    if not was_published:
+        send_whatsapp(
+            f"Hi, Cloude hier ⚠️\n\n"
+            f"Das Training am {wtag}, {datum} ist als Trainingsentfall markiert.\n"
+            f"Ich habe den Entfall-Hinweis veröffentlicht und erstelle KEINEN normalen Plan."
+        )
+    print(f"[ENTFALL] Entfall für {datum} verarbeitet.")
+    return True
 
 def mark_anmerkungen_gelesen(sftp, ids_to_mark):
     """Markiert angegebene Anmerkungen als gelesen auf dem Server."""
@@ -973,6 +1011,13 @@ def _load_trainer_roles_history(state, exclude_date=None, limit=6):
             history.setdefault(trainer, []).append({"date": dk, "role": role})
     return history
 
+def _role_groups(role):
+    """Zerlegt ein gespeichertes Rollen-Label ('G1', 'G3+G4', 'Springer', None)
+    in die Menge der zugrunde liegenden Gruppennamen ('Springer'/None -> leer)."""
+    if not role or role == "Springer":
+        return set()
+    return set(role.split("+"))
+
 def _assign_units_fair(units, candidate_trainers, history, immer_springer):
     """Verteilt `units` (Liste von Einheiten-Labels, z.B. ['G1','G2+G3']) so
     fair wie moeglich auf `candidate_trainers` ueber ALLE Rollen (welche
@@ -990,6 +1035,18 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
             if matcher(rs[i]):
                 return i - len(rs)   # negativ; je laenger her, desto kleiner
         return -999                  # nie -> hoechste Prioritaet
+    def last_index_for_unit(t, unit_label):
+        # Bugfix 30.08.2026 (Noah: "fuehlt sich an, als haette Noah immer G1 und
+        # Andy immer G3+G4"): verglich bisher das Rollen-Label exakt ("G3+G4" ==
+        # "G3+G4"), matchte also NIE, wenn eine Zusammenlegung mal anders ausfiel
+        # (z.B. nur "G3" statt "G3+G4"). Ohne Ueberschneidung mit der Historie blieb
+        # der Score fuer praktisch jeden Trainer dauerhaft -999 (nie), der
+        # nachfolgende sort() ist dann stabil und faellt auf die Config-Reihenfolge
+        # der Trainer zurueck -- macht die "faire" Rotation fuer Merge-Faelle
+        # effektiv wirkungslos und erzeugt genau das gemeldete statische Muster.
+        # Jetzt zaehlt jede Ueberschneidung der beteiligten Gruppen als Treffer.
+        groups = set(unit_label.split("+"))
+        return last_index_for(t, lambda r: bool(_role_groups(r.get("role")) & groups))
 
     normal_pool = [t for t in candidate_trainers if t not in immer_springer]
     forced_pool = [t for t in candidate_trainers if t in immer_springer]
@@ -1009,19 +1066,26 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
     getters = pool_sorted[:n_units]
     springers = [t for t in pool if t not in getters] + overflow_springers
 
-    pairs = []
-    for t in getters:
-        for u in units:
-            pairs.append((last_index_for(t, lambda r, u=u: r.get("role") == u), t, u))
-    pairs.sort(key=lambda x: x[0])
-    used_t, used_u, assign = set(), set(), {}
-    for score, t, u in pairs:
-        if t in used_t or u in used_u:
-            continue
-        assign[t] = u
-        used_t.add(t); used_u.add(u)
-    for t, u in zip([t for t in getters if t not in used_t], [u for u in units if u not in used_u]):
-        assign[t] = u
+    # Bugfix 30.08.2026 (Noah: 'fuehlt sich an, als haette Noah immer G1 und
+    # Andy immer G3+G4'): Die fruehere Zuteilung sortierte ALLE (Trainer,Einheit)-
+    # Paare nach Score und griff dann gierig zu -- bei mehreren gleich guten
+    # Paaren (haeufig, z.B. wenn zwei Trainer noch nie eine bestimmte Einheit
+    # hatten) haengt das Ergebnis rein von der zufaelligen Iterationsreihenfolge
+    # ab, nicht vom tatsaechlich global fairsten Ergebnis (ein Trainer kann
+    # dabei in eine schlechtere Einheit gedraengt werden, obwohl eine andere,
+    # global bessere Verteilung moeglich gewesen waere). Bei realistisch
+    # kleinen Trainer-/Einheiten-Zahlen (Turnverein, keine Grossorganisation)
+    # ist eine vollstaendige Suche ueber alle moeglichen Zuordnungen (Permutationen)
+    # problemlos schnell und liefert garantiert die global fairste Zuteilung
+    # (minimale Summe der Einzel-Scores).
+    assign = {}
+    if getters:
+        best_assign, best_score = None, None
+        for combo in itertools.permutations(units, len(getters)):
+            total = sum(last_index_for_unit(t, u) for t, u in zip(getters, combo))
+            if best_score is None or total < best_score:
+                best_score, best_assign = total, dict(zip(getters, combo))
+        assign = best_assign or {}
     return assign, springers
 
 # ════════════════════════════════════════════════════════════════
@@ -1125,7 +1189,20 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
     #    (kleinste zeit-kompatible Paarung zuerst). Gibt es keinen
     #    kompatiblen Merge-Partner mehr, bleiben ueberzaehlige Einheiten
     #    einzeln (Notlage) -- werden dann unten als unbesetzt markiert.
-    while len(units) > max(1, len(holders_pool)):
+    #
+    #    Bugfix 30.08.2026 (Noah: ein als "immer nur Springer" markierter Trainer
+    #    bekam trotzdem regelmaessig eine Gruppe): Ziel war bisher len(holders_pool)
+    #    -- ALLE verfuegbaren Trainer inkl. immer_springer. Das merged nur so weit
+    #    wie fuer die reine Kopfzahl noetig, nicht so weit wie fuer die Kopfzahl OHNE
+    #    immer_springer-Trainer noetig waere -- _assign_units_fair() musste dadurch
+    #    haeufiger als eigentlich noetig auf den immer_springer-Trainer zurueckgreifen.
+    #    Jetzt wird zuerst versucht, so weit zusammenzulegen, dass die normalen
+    #    (nicht immer_springer) Trainer allein ausreichen; nur wenn dafuer kein
+    #    kompatibler Merge-Partner mehr existiert, greift wie gehabt der
+    #    Notlage-Fallback in _assign_units_fair() (immer_springer wird doch gezogen).
+    _normal_holders = [t for t in holders_pool if t not in IMMER_SPRINGER]
+    _merge_target = len(_normal_holders) if _normal_holders else len(holders_pool)
+    while len(units) > max(1, _merge_target):
         best = None
         for i in range(len(units)):
             for j in range(i + 1, len(units)):
@@ -2333,31 +2410,28 @@ def main():
     datum_iso         = training_date.strftime("%Y-%m-%d")
     entfall_published = state.setdefault("entfall_published", [])
 
-    if datum_iso in entfall_list:
-        _ef_notiz = (fixed_for_date.get("notiz", "") or "").strip()
-        _ef_nhash = hashlib.md5(_ef_notiz.encode("utf-8")).hexdigest()
-        _notiz_store = state.setdefault("entfall_notiz_hash", {})
-        _notiz_changed = _notiz_store.get(datum_kurz) != _ef_nhash
-        _was_published = datum_kurz in entfall_published
-        if _was_published and plan_exists(sftp, datum_kurz) and not _notiz_changed:
-            print(f"[ENTFALL] {datum} bereits als Entfall veröffentlicht – nichts zu tun.")
-            sftp.close(); ssh.close()
-            return
-        publish_entfall(sftp, datum, datum_kurz, wtag, _ef_notiz)
-        _notiz_store[datum_kurz] = _ef_nhash
-        if datum_kurz not in entfall_published:
-            entfall_published.append(datum_kurz)
-        if datum_kurz not in state.setdefault("generated_plans", []):
-            state["generated_plans"].append(datum_kurz)
-        state.get("plan_data", {}).pop(datum_kurz, None)  # alten Plan-Hash verwerfen
+    # Bugfix 30.08.2026 (Noah: Training vom 26.08. war ausgefallen, stand aber nicht
+    # als Entfall im Trainingsplan): Dieser Check pruefte bisher AUSSCHLIESSLICH das
+    # naechste anstehende Training (datum_iso == active_training_date()). Jeder andere
+    # Eintrag in trainingsentfall.json -- insbesondere ein bereits vergangenes Training,
+    # das erst nachtraeglich als Entfall markiert wurde -- wurde dadurch nie
+    # veroeffentlicht, selbst wenn er weiterhin in der Liste stand. Jetzt werden zuerst
+    # ALLE anderen Eintraege der Liste nachgeholt, bevor wie gehabt das naechste
+    # Training geprueft wird.
+    _other_published = False
+    for _ef_iso in entfall_list:
+        if _ef_iso == datum_iso:
+            continue
+        if _publish_entfall_for(sftp, state, fixed_entries, _ef_iso, entfall_published):
+            _other_published = True
+    if _other_published:
         save_state(sftp, state)
-        if not _was_published:
-            send_whatsapp(
-            f"Hi, Cloude hier ⚠️\n\n"
-            f"Das Training am {wtag}, {datum} ist als Trainingsentfall markiert.\n"
-            f"Ich habe den Entfall-Hinweis veröffentlicht und erstelle KEINEN normalen Plan."
-        )
-        print(f"[ENTFALL] Entfall für {datum} verarbeitet.")
+
+    if datum_iso in entfall_list:
+        _published_now = _publish_entfall_for(sftp, state, fixed_entries, datum_iso, entfall_published)
+        save_state(sftp, state)
+        if not _published_now:
+            print(f"[ENTFALL] {datum} bereits als Entfall veröffentlicht – nichts zu tun.")
         sftp.close(); ssh.close()
         return
     elif datum_kurz in entfall_published:
