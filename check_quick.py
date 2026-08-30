@@ -21,6 +21,10 @@ SSH_HOST     = os.environ.get("SSH_HOST",     "access-5017462830.webspace-host.c
 SSH_USER     = os.environ.get("SSH_USER",     "a2358459")
 SSH_PASSWORD = os.environ.get("SSH_PASSWORD", "")
 SSH_PORT     = int(os.environ.get("SSH_PORT", "22"))
+# Manueller Regenerations-Erzwinger, siehe auto_trainingsplan.py (dieselbe
+# Env-Var muss hier UND dort gesetzt sein, sonst haelt schon dieser
+# Schnell-Check den Hauptlauf gar nicht erst an).
+FORCE_REGEN  = os.environ.get("FORCE_REGEN", "").lower() == "true"
 
 # ════════════════════════════════════════════════════════════
 def set_output(key, value):
@@ -235,10 +239,12 @@ def main():
 
     if abs_changed:
         print(f"Abmeldungsaenderung! Alt: {stored_hash[:8]}… → Neu: {current_abs_hash[:8]}…")
-    elif not has_new_anmerkungen:
+    elif not has_new_anmerkungen and not FORCE_REGEN:
         print(f"Keine Aenderung (Hash: {stored_hash[:8]}…)")
+    elif FORCE_REGEN:
+        print("FORCE_REGEN gesetzt -> Regenerierung ohne Datenaenderung erzwungen.")
 
-    if abs_changed or has_new_anmerkungen:
+    if abs_changed or has_new_anmerkungen or FORCE_REGEN:
         set_output("needs_update", "true")
     else:
         set_output("needs_update", "false")

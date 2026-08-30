@@ -154,6 +154,13 @@ SSH_PASSWORD  = os.environ.get("SSH_PASSWORD", "")
 SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
 WHATSAPP_PHONE    = os.environ.get("WHATSAPP_PHONE", "")
 CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
+# Manueller Regenerations-Erzwinger (workflow_dispatch-Input "force" in
+# auto_trainingsplan.yml) -- fuer den Fall, dass ein reiner Code-Fix (z.B. an
+# der Trainer-Zuteilungslogik) auf einen bereits generierten Plan angewendet
+# werden soll, OHNE echte Abwesenheiten/Anmerkungen zu aendern. Bypasst NUR
+# die "nichts geaendert"-Kurzschluesse, nie den Schutz fuer protected_plans
+# oder ein gesperrtes lock_trainer_plan.
+FORCE_REGEN = os.environ.get("FORCE_REGEN", "").lower() == "true"
 
 # ════════════════════════════════════════════════════════════════
 #  STATE (gespeichert auf dem Server als state_auto.json)
@@ -2524,7 +2531,7 @@ def main():
         has_new_anm = len(anmerkungen_server) > 0
         abs_changed = (new_hash != stored_hash)
 
-        if not abs_changed and not has_new_anm:
+        if not abs_changed and not has_new_anm and not FORCE_REGEN:
             print("Plan aktuell, keine Aenderungen → nichts zu tun.")
             sftp.close(); ssh.close()
             return
@@ -2533,6 +2540,8 @@ def main():
             print(f"Abmeldungsaenderung erkannt (Hash {stored_hash[:8]}... → {new_hash[:8]}...)")
         if has_new_anm:
             print(f"Neue Trainer-Anmerkungen: {len(anmerkungen_server)}")
+        if FORCE_REGEN and not abs_changed and not has_new_anm:
+            print("[FORCE] FORCE_REGEN gesetzt -> Regenerierung ohne Datenaenderung erzwungen.")
 
         # Trainer-Absences prüfen
         stored_trainer_abs = set(plan_data.get("trainer_absences", []))

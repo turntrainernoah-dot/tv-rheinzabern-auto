@@ -5,6 +5,12 @@ on:
     - cron: '*/30 * * * *'
     - cron: '0 14 * * 3,5'
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Regenerierung erzwingen, auch ohne geaenderte Abwesenheiten/Anmerkungen (z.B. nach einem reinen Code-Fix an der Zuteilungslogik)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   generate-plan:
@@ -37,6 +43,7 @@ jobs:
           SSH_USER:     ${{ secrets.SSH_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
           SSH_PORT:     ${{ secrets.SSH_PORT }}
+          FORCE_REGEN:  ${{ inputs.force }}
         run: python check_quick.py
       - name: openpyxl installieren
         if: steps.quickcheck.outputs.needs_update == 'true'
@@ -59,4 +66,5 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO:           ${{ secrets.EMAIL_TO }}
           GH_MODELS_TOKEN:    ${{ secrets.GH_MODELS_TOKEN }}
+          FORCE_REGEN:        ${{ inputs.force }}
         run: python auto_trainingsplan.py
