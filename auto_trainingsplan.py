@@ -2470,6 +2470,16 @@ def main():
                     print(f"[DEBUG] build_ki_einteilung() ergibt (das ist der tatsaechlich aktive Pfad): {_extract_trainer_roles(_dbg_admin_plan)}")
                 except Exception as _dbg_e:
                     print(f"[DEBUG] build_ki_einteilung() Fehler: {_dbg_e!r}")
+        try:
+            _dbg_live_f = sftp.open("trainingspläne/trainingsplan_aktuell.json", "r")
+            _dbg_live = json.loads(_dbg_live_f.read().decode("utf-8", errors="replace"))
+            _dbg_live_f.close()
+            print(f"[DEBUG] LIVE trainingsplan_aktuell.json: datum={_dbg_live.get('datum')}")
+            for _t, _slots in (_dbg_live.get("einteilung") or {}).items():
+                _tasks = [s.get("aufgabe") for s in (_slots or [])]
+                print(f"[DEBUG]   -> {_t}: {_tasks}")
+        except Exception as _dbg_e2:
+            print(f"[DEBUG] trainingsplan_aktuell.json konnte nicht gelesen werden: {_dbg_e2!r}")
         sftp.close(); ssh.close()
         return
 
