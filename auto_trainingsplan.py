@@ -2619,6 +2619,7 @@ def main():
                 _base_tp = build_admin_trainer_plan(absences, _partial, grid_rows, grid_phase, trainer_roles_history=_troles_hist, ki=_ki)
         else:
             _base_tp = build_admin_trainer_plan(absences, _partial, grid_rows, grid_phase, trainer_roles_history=_troles_hist, ki=_ki)
+        print(f"[TEMPDEBUG] _base_tp roles: {_extract_trainer_roles(_base_tp)}  absences={absences}")
         fixed_for_date["fixed_trainer_plan"] = _base_tp
         fixed_for_date["lock_trainer_plan"] = True
         lock_trainer = True
