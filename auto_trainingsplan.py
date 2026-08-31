@@ -480,6 +480,18 @@ def remove_plan_files(sftp, datum_kurz):
         except Exception:
             pass
 
+def _entfall_is_recent(iso_date, today, max_age_days=14):
+    """Wie alt ist ein trainingsentfall.json-Eintrag, gemessen an `today`?
+    True nur fuer Eintraege innerhalb der letzten `max_age_days` Tage (auch
+    kuenftige Daten zaehlen als 'recent', negative Alterswerte inklusive).
+    Filtert die Monate alten Karteileichen aus, die trainingsentfall.json nie
+    entfernt (siehe Hotfix-Kommentar in main())."""
+    try:
+        d = datetime.strptime(iso_date, "%Y-%m-%d").date()
+    except Exception:
+        return False
+    return (today - d).days <= max_age_days
+
 def _publish_entfall_for(sftp, state, fixed_entries, iso_date, entfall_published):
     """Veroeffentlicht (falls noetig) den Entfall-Hinweis fuer EIN einzelnes Datum aus
     trainingsentfall.json. Ausgelagert aus main(), weil der Entfall-Check bisher nur
@@ -2425,9 +2437,17 @@ def main():
     # veroeffentlicht, selbst wenn er weiterhin in der Liste stand. Jetzt werden zuerst
     # ALLE anderen Eintraege der Liste nachgeholt, bevor wie gehabt das naechste
     # Training geprueft wird.
+    # Hotfix 30.08.2026: trainingsentfall.json sammelt seit Monaten Karteileichen
+    # (laengst vergangene, nie aus der Liste entfernte Entfall-Daten). Der erste
+    # Lauf mit dem Fix oben hat das schmerzhaft gezeigt: 15.05./12.06.2026 waren
+    # nie in entfall_published vermerkt und loesten dadurch eine ECHTE, Monate zu
+    # spaete WhatsApp-/E-Mail-Benachrichtigung aus. Ab jetzt werden nur Eintraege
+    # aus den letzten 14 Tagen (der eigentliche Anwendungsfall: ein kuerzlich
+    # nachtraeglich markiertes Training wie der 26.08.-Fall) automatisch nachgeholt.
+    # Aeltere Karteileichen werden weder angefasst noch benachrichtigt.
     _other_published = False
     for _ef_iso in entfall_list:
-        if _ef_iso == datum_iso:
+        if _ef_iso == datum_iso or not _entfall_is_recent(_ef_iso, today):
             continue
         if _publish_entfall_for(sftp, state, fixed_entries, _ef_iso, entfall_published):
             _other_published = True
