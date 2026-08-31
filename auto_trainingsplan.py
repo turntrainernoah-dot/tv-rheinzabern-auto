@@ -1094,6 +1094,11 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
         return history.get(t, [])
     def times_springer(t):
         return sum(1 for r in recs(t) if r.get("role") == "Springer")
+    def times_group(t):
+        # Gesamtzahl der Termine, an denen t irgendeine echte Gruppe (nicht
+        # Springer) hatte -- Gegenstueck zu times_springer(), fuer den
+        # Tiebreak unten.
+        return len(recs(t)) - times_springer(t)
     def last_index_for(t, matcher):
         rs = recs(t)
         for i in range(len(rs) - 1, -1, -1):
@@ -1135,13 +1140,23 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
     else:
         need = n_units - len(normal_pool)
         forced_sorted = sorted(forced_pool,
-            key=lambda t: last_index_for(t, lambda r: r.get("role") != "Springer"))
+            key=lambda t: (last_index_for(t, lambda r: r.get("role") != "Springer"), times_group(t)))
         pulled = forced_sorted[:need]
         pool = normal_pool + pulled
         overflow_springers = [t for t in forced_pool if t not in pulled]
 
+    # Bugfix 31.08.2026 (Noah: "das Teil soll auch zaehlen wie oft man
+    # Springer war, und dass das auch gleichmaessig ist"): times_springer()
+    # ist bereits das Hauptkriterium (wer oefter Springer war, bekommt eher
+    # eine Gruppe) -- bei Gleichstand (haeufig bei duenner Historie) fiel die
+    # Entscheidung bisher rein auf Recency zurueck, die bei komplett fehlender
+    # Historie ebenfalls fuer alle gleich (-999) ist und dann in Config-
+    # Reihenfolge einfriert -- dieselbe Fehlerklasse wie bei den Einheiten
+    # oben. Dritter Tiebreak: wer insgesamt bisher SELTENER eine echte Gruppe
+    # hatte, wird jetzt bevorzugt (holt auf), statt an der Config-Reihenfolge
+    # haengenzubleiben.
     pool_sorted = sorted(pool,
-        key=lambda t: (-times_springer(t), last_index_for(t, lambda r: r.get("role") != "Springer")))
+        key=lambda t: (-times_springer(t), last_index_for(t, lambda r: r.get("role") != "Springer"), times_group(t)))
     getters = pool_sorted[:n_units]
     springers = [t for t in pool if t not in getters] + overflow_springers
 

@@ -282,6 +282,26 @@ def test_rotation_frequency_tiebreak_verhindert_statisches_muster():
           sum(1 for c in counts if c > 0) >= 3, f"{g2_count}")
 
 
+def test_springer_frequency_tiebreak():
+    """Bugfix 31.08.2026 (Noah: 'das Teil soll auch zaehlen, wie oft man
+    Springer war, und dass das auch gleichmaessig ist'): times_springer()
+    ist zwar schon das Hauptkriterium dafuer, wer als naechstes eine Gruppe
+    statt Springer bekommt -- aber bei Gleichstand (haeufig) fiel die
+    Entscheidung bisher nur auf Recency zurueck, die ebenfalls gleichauf
+    sein kann, obwohl ein Trainer insgesamt schon deutlich oefter eine
+    echte Gruppe hatte als der andere. Neuer dritter Tiebreak: wer
+    INSGESAMT seltener eine Gruppe hatte, wird bevorzugt zur Gruppe
+    eingeteilt (statt wieder Springer zu werden)."""
+    history = {
+        "A": [{"date": "1", "role": "G1"}, {"date": "2", "role": "Springer"}],
+        "B": [{"date": "-3", "role": "G1"}, {"date": "-2", "role": "G1"},
+              {"date": "-1", "role": "G1"}, {"date": "2", "role": "Springer"}],
+    }
+    assign, springers = a._assign_units_fair(["G1"], ["A", "B"], history, set())
+    check("bei Recency-Gleichstand + gleicher Springer-Zahl bekommt A (seltener Gruppe gehabt) die Gruppe",
+          assign.get("A") == "G1" and "B" in springers, f"assign={assign} springers={springers}")
+
+
 def test_find_free_coverer_prefers_non_immer_springer():
     """Bugfix 31.08.2026 (Noah: 'der Dauerspringer soll so lange wie moeglich
     Springer bleiben, es gibt ja noch andere Springer wie Cassi/Torben'):
@@ -774,6 +794,7 @@ if __name__ == "__main__":
     test_merge_compatibility()
     test_rotation_fairness()
     test_rotation_frequency_tiebreak_verhindert_statisches_muster()
+    test_springer_frequency_tiebreak()
     test_find_free_coverer_prefers_non_immer_springer()
     test_ki_path_parity()
     test_ki_assign_respects_immer_springer()
