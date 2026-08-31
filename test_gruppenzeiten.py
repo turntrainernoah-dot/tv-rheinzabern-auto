@@ -585,6 +585,30 @@ def test_entfall_verarbeitet_alle_termine_nicht_nur_naechsten():
         a.publish_entfall, a.send_whatsapp, a.plan_exists = orig_publish, orig_wa, orig_exists
 
 
+def test_entfall_ignoriert_alte_karteileichen():
+    """Hotfix 30.08.2026: Der erste Lauf mit dem 'alle Entfall-Termine
+    verarbeiten'-Fix hat live gezeigt, dass trainingsentfall.json seit Monaten
+    laengst erledigte Eintraege nie entfernt (15.05./12.06.2026 standen noch
+    drin, obwohl diese Trainings laengst vorbei waren) -- ohne Alters-Filter
+    loeste das echte, Monate zu spaete WhatsApp-/E-Mail-Benachrichtigungen aus.
+    _entfall_is_recent() ist die Grenze, die main() jetzt vor dem Nachholen
+    NICHT-naechster Entfall-Termine prueft: nur Eintraege der letzten 14 Tage
+    (oder in der Zukunft) gelten als 'nachholbar', alles Aeltere wird ignoriert."""
+    today = a.date(2026, 8, 30)
+    check("4 Tage alter Eintrag (der echte 26.08.-Fall) gilt als aktuell",
+          a._entfall_is_recent("2026-08-26", today) is True)
+    check("genau 14 Tage alter Eintrag gilt noch als aktuell (Grenzwert inklusive)",
+          a._entfall_is_recent("2026-08-16", today) is True)
+    check("15 Tage alter Eintrag gilt nicht mehr als aktuell",
+          a._entfall_is_recent("2026-08-15", today) is False)
+    check("Monate alter Karteileichen-Eintrag (15.05.2026) gilt nicht als aktuell",
+          a._entfall_is_recent("2026-05-15", today) is False)
+    check("ein Eintrag in der Zukunft gilt als aktuell (kuenftige Absage)",
+          a._entfall_is_recent("2026-09-15", today) is True)
+    check("kaputtes Datumsformat -> sicher False statt Exception",
+          a._entfall_is_recent("nicht-ein-datum", today) is False)
+
+
 if __name__ == "__main__":
     test_regression_grid()
     test_regression_plan_shape()
@@ -600,6 +624,7 @@ if __name__ == "__main__":
     test_absences_frueher_gehen_checkbox()
     test_rotation_ueberlebt_wechselnde_merges()
     test_entfall_verarbeitet_alle_termine_nicht_nur_naechsten()
+    test_entfall_ignoriert_alte_karteileichen()
     print()
     if FAILS:
         print(f"{len(FAILS)} FEHLGESCHLAGEN:")
