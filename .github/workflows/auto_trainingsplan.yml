@@ -16,6 +16,11 @@ on:
         required: false
         default: ''
         type: string
+      debug_dump:
+        description: 'Nur Diagnose: gibt Roster/Abwesenheiten/Rollen-Historie und das Ergebnis der Trainer-Zuteilung fuer das naechste Training im Log aus, OHNE etwas hochzuladen oder zu speichern.'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   generate-plan:
@@ -48,7 +53,7 @@ jobs:
           SSH_USER:     ${{ secrets.SSH_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
           SSH_PORT:     ${{ secrets.SSH_PORT }}
-          FORCE_REGEN:  ${{ inputs.force || (inputs.add_entfall_date != '') }}
+          FORCE_REGEN:  ${{ inputs.force || (inputs.add_entfall_date != '') || inputs.debug_dump }}
         run: python check_quick.py
       - name: openpyxl installieren
         if: steps.quickcheck.outputs.needs_update == 'true'
@@ -71,6 +76,7 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_TO:           ${{ secrets.EMAIL_TO }}
           GH_MODELS_TOKEN:    ${{ secrets.GH_MODELS_TOKEN }}
-          FORCE_REGEN:        ${{ inputs.force || (inputs.add_entfall_date != '') }}
+          FORCE_REGEN:        ${{ inputs.force || (inputs.add_entfall_date != '') || inputs.debug_dump }}
           ADD_ENTFALL_DATE:   ${{ inputs.add_entfall_date }}
+          DEBUG_DUMP:         ${{ inputs.debug_dump }}
         run: python auto_trainingsplan.py

@@ -2432,6 +2432,27 @@ def main():
     # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
     new_hash = raw_abm_hash
 
+    # Diagnose-Modus (workflow_dispatch-Input "debug_dump"): gibt Roster,
+    # Abwesenheiten, Rollen-Historie und das Ergebnis von build_trainer_plan()
+    # fuer das naechste Training aus, OHNE irgendetwas hochzuladen oder den
+    # State zu speichern -- rein lesend, fuer Live-Fehlersuche ohne Risiko.
+    if os.environ.get("DEBUG_DUMP", "").lower() == "true":
+        print(f"\n[DEBUG] ALLE_TRAINER ({len(ALLE_TRAINER)}): {ALLE_TRAINER}")
+        print(f"[DEBUG] IMMER_SPRINGER: {sorted(IMMER_SPRINGER)}")
+        print(f"[DEBUG] GRUPPEN_ORDER: {GRUPPEN_ORDER}")
+        print(f"[DEBUG] GRUPPEN_TAUSCH: {sorted(GRUPPEN_TAUSCH)}")
+        print(f"[DEBUG] Datum: {datum_kurz} ({wtag})")
+        print(f"[DEBUG] Abwesenheiten: {absences}")
+        _dbg_hist = _load_trainer_roles_history(state, exclude_date=datum_kurz)
+        print(f"[DEBUG] trainer_roles_history (letzte 6 Termine je Trainer): {_dbg_hist}")
+        _dbg_plan, _dbg_sd, _dbg_anm = build_trainer_plan(
+            absences, grid_rows, grid_phase, trainer_roles_history=_dbg_hist)
+        _dbg_roles = _extract_trainer_roles(_dbg_plan)
+        print(f"[DEBUG] build_trainer_plan() ergibt: {_dbg_roles}")
+        print(f"[DEBUG] Anmerkungen aus build_trainer_plan: {_dbg_anm}")
+        sftp.close(); ssh.close()
+        return
+
     # -- Deterministischer Kommando-Parser (Bug-Fix 19.08.2026): erkennt einfache
     # Kurz-Kommandos wie "Noah Springer" oder "lösche alle Anmerkungen" OHNE KI
     # und wendet sie direkt an. Was hier nicht matcht, bleibt fuer die KI. --
