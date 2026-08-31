@@ -278,6 +278,51 @@ def test_ki_path_parity():
               colors <= {"aufwaermen", "g1_blau", "g2_orange", "aufbauen", "springer"}, f"{colors}")
 
 # ════════════════════════════════════════════════════════════════
+# 3b) Bugfix 31.08.2026: ki.assign darf einen immer_springer-Trainer nicht
+#     unbesehen in eine echte Gruppe zwingen, wenn ein anderer verfuegbarer
+#     Trainer stattdessen einspringen kann (Noah: "Andy ist kein Springer,
+#     sondern G3+G4, obwohl er Dauerspringer ist" -- eine per Anmerkung/KI
+#     abgeleitete Einzelgruppen-Zuteilung fuer Andy hatte das vorher
+#     unbesehen uebernommen).
+# ════════════════════════════════════════════════════════════════
+def test_ki_assign_respects_immer_springer():
+    gruppen = ["G1", "G2", "G3"]
+    turner = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
+    trainer = ["Andy K.", "Fabian G.", "Cassian P.", "Julian K."]  # 4 Trainer, 3 Gruppen
+    set_roster(gruppen, turner, trainer, immer_springer=["Andy K."])
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+    absences = no_absences(gruppen)
+
+    # Explizite (z.B. per Anmerkung/KI abgeleitete) Zuteilung zwingt den
+    # immer_springer-Trainer in eine echte Gruppe -- obwohl mit 4 Trainern
+    # fuer 3 Gruppen genug normale Trainer da waeren, die stattdessen
+    # einspringen koennten.
+    ki = {"assign": [{"trainer": "Andy K.", "gruppe": "G3"}]}
+    plan, _s, _anm = a.build_ki_einteilung(absences, ki, grid_rows, grid_phase)
+    roles = a._extract_trainer_roles(plan)
+    check("immer_springer-Trainer bleibt Springer, wenn ein anderer Trainer die explizit zugeteilte Gruppe uebernehmen kann",
+          roles.get("Andy K.") == "Springer", f"{roles}")
+    check("die explizit zugeteilte Gruppe G3 wird trotzdem von jemandem uebernommen (nicht verworfen)",
+          "G3" in roles.values(), f"{roles}")
+
+    # Jetzt ist Andy der EINZIGE verfuegbare Trainer ausser dem, der schon
+    # per expliziter Zuteilung anderweitig gebunden ist (Fabian als Springer
+    # fest eingeteilt) -- da bleibt keine Wahl, die explizite Zuteilung fuer
+    # Andy muss (letzte Instanz) uebernommen werden.
+    gruppen2 = ["G1"]
+    turner2 = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen2}
+    trainer2 = ["Andy K.", "Fabian G."]
+    set_roster(gruppen2, turner2, trainer2, immer_springer=["Andy K."])
+    grid_rows2, grid_phase2 = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+    ki2 = {"assign": [{"trainer": "Fabian G.", "gruppe": "Springer"},
+                       {"trainer": "Andy K.", "gruppe": "G1"}]}
+    plan2, _s2, _anm2 = a.build_ki_einteilung(no_absences(gruppen2), ki2, grid_rows2, grid_phase2)
+    roles2 = a._extract_trainer_roles(plan2)
+    check("ohne Alternative wird die explizite Zuteilung fuer den immer_springer-Trainer als letzte Instanz uebernommen",
+          roles2.get("Andy K.") == "G1", f"{roles2}")
+
+
+# ════════════════════════════════════════════════════════════════
 # 4) Notfall / leere Randbedingungen
 # ════════════════════════════════════════════════════════════════
 def test_edge_cases():
@@ -665,6 +710,7 @@ if __name__ == "__main__":
     test_merge_compatibility()
     test_rotation_fairness()
     test_ki_path_parity()
+    test_ki_assign_respects_immer_springer()
     test_edge_cases()
     test_geraet_tausch()
     test_partial_trainer_holds_group()
