@@ -1880,6 +1880,7 @@ def build_ki_einteilung(absences, ki, grid_rows, grid_phase, trainer_roles_histo
             merge_units.append((grps, None)); used_groups |= grps
 
     forced = {}
+    forced_immer = {}   # immer_springer-Trainer mit expliziter Einzelgruppen-Zuteilung (vorlaeufig)
     for a in assign_raw:
         tr = _ki_full_name(a.get("trainer", ""))
         rawlab = (a.get("gruppe") or a.get("label") or "").strip()
@@ -1888,7 +1889,36 @@ def build_ki_einteilung(absences, ki, grid_rows, grid_phase, trainer_roles_histo
         if rawlab.lower() == "springer":
             forced[tr] = "Springer"
         elif rawlab in base_groups and rawlab not in used_groups:
-            forced[tr] = rawlab; used_groups.add(rawlab)
+            used_groups.add(rawlab)
+            if tr in IMMER_SPRINGER:
+                forced_immer[tr] = rawlab
+            else:
+                forced[tr] = rawlab
+
+    # Bugfix 31.08.2026 (Noah: "Andy ist kein Springer sondern G3+G4, obwohl
+    # er als Dauerspringer eingestellt ist"): eine per Anmerkung/KI abgeleitete
+    # explizite Einzelgruppen-Zuteilung (ki.assign) wurde bisher fuer JEDEN
+    # Trainer unbesehen uebernommen -- auch fuer einen immer_springer-Trainer,
+    # obwohl an anderer Stelle im selben Plan noch ein normaler Trainer frei
+    # war, der die Gruppe stattdessen haette uebernehmen koennen. Andy soll
+    # laut Konfiguration IMMER WENN MOEGLICH Springer sein (gleiche "letzte
+    # Instanz"-Regel wie in _assign_units_fair) -- deshalb hier: gibt es einen
+    # verfuegbaren, noch nicht verplanten Nicht-immer_springer-Trainer, wird
+    # DER stattdessen in die Gruppe gesetzt und der immer_springer-Trainer
+    # bleibt frei fuer Springer. Nur wenn wirklich niemand sonst uebrig ist,
+    # wird die explizite Zuteilung wie angegeben uebernommen.
+    if forced_immer:
+        committed_trainers = set(forced) | {tr for _g, tr in merge_units if tr}
+        for tr, rawlab in forced_immer.items():
+            substitute = next((c for c in available
+                                if c not in IMMER_SPRINGER
+                                and c not in committed_trainers), None)
+            if substitute:
+                forced[substitute] = rawlab
+                committed_trainers.add(substitute)
+            else:
+                forced[tr] = rawlab
+                committed_trainers.add(tr)
 
     units = []   # (label, forced_trainer_or_None, groups_list)
     for grps, tr in merge_units:
