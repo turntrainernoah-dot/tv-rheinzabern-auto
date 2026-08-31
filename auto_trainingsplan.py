@@ -2775,6 +2775,13 @@ def main():
         upload_xlsx(sftp, xlsx_path, datum_kurz)
         aktuell_json = build_aktuell_json(datum, datum_kurz, wtag, geraet_1, geraet_2, trainer_plan, absences, grid_rows)
         upload_aktuell_json(sftp, aktuell_json)
+        try:
+            _verify_f = sftp.open("trainingspläne/trainingsplan_aktuell.json", "r")
+            _verify = json.loads(_verify_f.read().decode("utf-8", errors="replace"))
+            _verify_f.close()
+            print(f"[TEMPDEBUG-VERIFY] Sofort-Rueckgelesen (gleiche SFTP-Session): Andy K. = {_verify.get('einteilung', {}).get('Andy K.')}")
+        except Exception as _ve:
+            print(f"[TEMPDEBUG-VERIFY] Rueckles-Fehler: {_ve!r}")
 
         ids_gelesen = [a["id"] for a in anmerkungen_server if a.get("id")]
         mark_anmerkungen_gelesen(sftp, ids_gelesen)
