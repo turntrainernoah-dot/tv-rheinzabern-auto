@@ -2448,8 +2448,28 @@ def main():
         _dbg_plan, _dbg_sd, _dbg_anm = build_trainer_plan(
             absences, grid_rows, grid_phase, trainer_roles_history=_dbg_hist)
         _dbg_roles = _extract_trainer_roles(_dbg_plan)
-        print(f"[DEBUG] build_trainer_plan() ergibt: {_dbg_roles}")
+        print(f"[DEBUG] build_trainer_plan() ergibt (Standard-Pfad, ohne Admin/KI-Override): {_dbg_roles}")
         print(f"[DEBUG] Anmerkungen aus build_trainer_plan: {_dbg_anm}")
+        _dbg_fixed = fixed_entries.get(datum_kurz)
+        print(f"[DEBUG] fixed_entries[{datum_kurz}] (Admin/KI-Override, falls vorhanden): {_dbg_fixed}")
+        if isinstance(_dbg_fixed, dict) and _dbg_fixed.get("manuell_bearbeitet"):
+            _dbg_partial = _dbg_fixed.get("fixed_trainer_partial") or {}
+            _dbg_ki      = _dbg_fixed.get("ki") or {}
+            print(f"[DEBUG] -> manuell_bearbeitet=True, lock_trainer_plan={_dbg_fixed.get('lock_trainer_plan')}")
+            print(f"[DEBUG] -> fixed_trainer_partial: {_dbg_partial}")
+            print(f"[DEBUG] -> ki: {_dbg_ki}")
+            if _dbg_ki.get("assign") or _dbg_ki.get("merges"):
+                _dbg_abs2 = dict(absences)
+                _dbg_abs2.setdefault("Trainer", list(absences.get("Trainer", [])))
+                for _t in list(_dbg_partial.keys()):
+                    if _t not in _dbg_abs2["Trainer"]:
+                        _dbg_abs2["Trainer"].append(_t)
+                try:
+                    _dbg_admin_plan, _s2, _a2 = build_ki_einteilung(
+                        _dbg_abs2, _dbg_ki, grid_rows, grid_phase, _dbg_hist)
+                    print(f"[DEBUG] build_ki_einteilung() ergibt (das ist der tatsaechlich aktive Pfad): {_extract_trainer_roles(_dbg_admin_plan)}")
+                except Exception as _dbg_e:
+                    print(f"[DEBUG] build_ki_einteilung() Fehler: {_dbg_e!r}")
         sftp.close(); ssh.close()
         return
 
