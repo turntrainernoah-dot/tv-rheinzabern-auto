@@ -814,11 +814,19 @@ def timing_annotations(trainer_timing):
 
 def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
     """Freien Trainer fuer 'slot' finden: erst Springer, dann Auf-/Abbau.
-    Wer in diesem Slot selbst spaet/frueh geblockt ist, scheidet aus."""
+    Wer in diesem Slot selbst spaet/frueh geblockt ist, scheidet aus.
+    Bugfix 31.08.2026 (Noah: "der Dauerspringer soll so lange wie moeglich
+    Springer sein, da es noch andere Springer wie Cassi/Torben gibt"): gibt
+    es mehrere freie Springer, wird ein NICHT-immer_springer-Trainer
+    bevorzugt zur Vertretung eingesetzt, damit ein immer_springer-Trainer
+    (z.B. Andy) auch beim Einspringen fuer einen teil-abwesenden Kollegen
+    moeglichst als "Springer" sichtbar bleibt. Nur wenn kein anderer freier
+    Springer da ist, uebernimmt er selbst (letzte Instanz)."""
     def blocked_at(t):
         info = trainer_timing.get(t)
         return bool(info) and slot in info.get("blocked", [])
     for want in ("springer", "aufbauen"):
+        candidates = []
         for t, plan in trainer_plan.items():
             if t == exclude or not plan or slot >= len(plan):
                 continue
@@ -826,7 +834,11 @@ def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
                 continue
             _txt, ck = plan[slot]
             if ck == want:
-                return t
+                candidates.append(t)
+        if not candidates:
+            continue
+        non_immer = [t for t in candidates if t not in IMMER_SPRINGER]
+        return non_immer[0] if non_immer else candidates[0]
     return None
 
 def apply_timing_coverage(trainer_plan, trainer_timing):
@@ -1100,6 +1112,20 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
         # Jetzt zaehlt jede Ueberschneidung der beteiligten Gruppen als Treffer.
         groups = set(unit_label.split("+"))
         return last_index_for(t, lambda r: bool(_role_groups(r.get("role")) & groups))
+    def times_for_unit(t, unit_label):
+        # Bugfix 31.08.2026 (Noah: "fuehlt sich an, als haette Noah immer G2"):
+        # bei duenner/junger Historie liefert last_index_for_unit() fuer sehr
+        # viele (Trainer,Einheit)-Paare gleichermassen -999 ("nie gehabt") --
+        # der Permutations-Vergleich unten pickt dann per min() einfach die
+        # ERSTE bestbewertete Kombination, was bei wiederkehrend aehnlichen
+        # Abwesenheits-/Trainer-Konstellationen zu einem statischen Muster
+        # entlang der Config-Reihenfolge fuehrt, obwohl "fair" gemeint war.
+        # Als zweites Tie-Break-Kriterium zaehlt deshalb zusaetzlich, wie oft
+        # ein Trainer diese Einheit INSGESAMT schon hatte -- bei Gleichstand
+        # im Recency-Score gewinnt die Kombination mit der insgesamt
+        # gleichmaessigeren Verteilung.
+        groups = set(unit_label.split("+"))
+        return sum(1 for r in recs(t) if _role_groups(r.get("role")) & groups)
 
     normal_pool = [t for t in candidate_trainers if t not in immer_springer]
     forced_pool = [t for t in candidate_trainers if t in immer_springer]
@@ -1136,8 +1162,10 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
         best_assign, best_score = None, None
         for combo in itertools.permutations(units, len(getters)):
             total = sum(last_index_for_unit(t, u) for t, u in zip(getters, combo))
-            if best_score is None or total < best_score:
-                best_score, best_assign = total, dict(zip(getters, combo))
+            freq  = sum(times_for_unit(t, u) for t, u in zip(getters, combo))
+            score = (total, freq)
+            if best_score is None or score < best_score:
+                best_score, best_assign = score, dict(zip(getters, combo))
         assign = best_assign or {}
     return assign, springers
 

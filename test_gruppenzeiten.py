@@ -242,6 +242,70 @@ def test_rotation_fairness():
     check("jeder Trainer war mindestens einmal NICHT Springer",
           all(c < 20 for c in counts), f"{springer_count}")
 
+
+def test_rotation_frequency_tiebreak_verhindert_statisches_muster():
+    """Bugfix 31.08.2026 (Noah: 'fuehlt sich an, als haette Noah immer G2'):
+    ohne Frequenz-Tiebreak faellt der Permutations-Vergleich bei duenner
+    Historie (viele Kombinationen mit identischem Recency-Score -999) auf
+    die ERSTE gefundene Kombination zurueck -- das erzeugt ueber viele
+    Termine hinweg ein statisches Muster entlang der Config-Reihenfolge,
+    obwohl "fair" gemeint war. Mit dem Frequenz-Tiebreak (wie oft hatte ein
+    Trainer GENAU diese Gruppe schon insgesamt) verteilt sich jede einzelne
+    Gruppe -- nicht nur die Springer-Rolle insgesamt -- spuerbar
+    gleichmaessiger."""
+    gruppen = ["G1", "G2", "G3"]
+    turner = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
+    trainer = ["Noah", "Fabian", "Cassian", "Julian"]  # 4 Trainer, 3 Gruppen -> 1 Springer
+    set_roster(gruppen, turner, trainer)
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+
+    state = {"plan_data": {}}
+    g2_count = {t: 0 for t in trainer}
+    from datetime import date, timedelta
+    d = date(2026, 9, 2)
+    for _ in range(12):
+        dk = d.strftime("%d.%m.%y")
+        hist = a._load_trainer_roles_history(state, exclude_date=dk)
+        plan, _s, _anm = a.build_trainer_plan(no_absences(gruppen), grid_rows, grid_phase,
+                                               trainer_roles_history=hist)
+        roles = a._extract_trainer_roles(plan)
+        for t, r in roles.items():
+            if r == "G2":
+                g2_count[t] += 1
+        state.setdefault("plan_data", {})[dk] = {"trainer_roles": roles}
+        d += timedelta(days=2)
+
+    counts = list(g2_count.values())
+    check("G2 haengt nach 12 Terminen nicht an einem einzigen Trainer (kein 12/0/0/0-Muster)",
+          max(counts) < 12, f"{g2_count}")
+    check("G2 verteilt sich auf mindestens 3 der 4 Trainer",
+          sum(1 for c in counts if c > 0) >= 3, f"{g2_count}")
+
+
+def test_find_free_coverer_prefers_non_immer_springer():
+    """Bugfix 31.08.2026 (Noah: 'der Dauerspringer soll so lange wie moeglich
+    Springer bleiben, es gibt ja noch andere Springer wie Cassi/Torben'):
+    sind bei einer Vertretung (Trainer geht frueher/kommt spaeter) mehrere
+    Springer frei, wird bevorzugt ein NICHT-immer_springer-Trainer zur
+    Vertretung eingesetzt statt des Dauerspringers."""
+    a.IMMER_SPRINGER = {"Andy"}
+    trainer_plan = {
+        "Andy":    [("Springer", "springer"), ("Springer", "springer")],
+        "Cassian": [("Springer", "springer"), ("Springer", "springer")],
+        "Fabian":  [("G1", "g1_blau"), ("geht frueher", "sonder")],
+    }
+    coverer = a._find_free_coverer(trainer_plan, {}, 1, exclude="Fabian")
+    check("bevorzugt Cassian (nicht immer_springer) statt Andy als Vertretung",
+          coverer == "Cassian", f"{coverer}")
+
+    trainer_plan2 = {
+        "Andy":   [("Springer", "springer"), ("Springer", "springer")],
+        "Fabian": [("G1", "g1_blau"), ("geht frueher", "sonder")],
+    }
+    coverer2 = a._find_free_coverer(trainer_plan2, {}, 1, exclude="Fabian")
+    check("ohne Alternative uebernimmt der immer_springer-Trainer als letzte Instanz",
+          coverer2 == "Andy", f"{coverer2}")
+
 # ════════════════════════════════════════════════════════════════
 # 7) KI-Pfad vs Auto-Pfad: keine strukturelle Drift bei leerer KI-Anweisung
 # ════════════════════════════════════════════════════════════════
@@ -709,6 +773,8 @@ if __name__ == "__main__":
     test_trainer_counts_and_immer_springer()
     test_merge_compatibility()
     test_rotation_fairness()
+    test_rotation_frequency_tiebreak_verhindert_statisches_muster()
+    test_find_free_coverer_prefers_non_immer_springer()
     test_ki_path_parity()
     test_ki_assign_respects_immer_springer()
     test_edge_cases()
