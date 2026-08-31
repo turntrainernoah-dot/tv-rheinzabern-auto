@@ -161,6 +161,9 @@ CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 # die "nichts geaendert"-Kurzschluesse, nie den Schutz fuer protected_plans
 # oder ein gesperrtes lock_trainer_plan.
 FORCE_REGEN = os.environ.get("FORCE_REGEN", "").lower() == "true"
+# Manueller Nachtrag zu trainingsentfall.json (workflow_dispatch-Input
+# "add_entfall_date", z.B. "2026-08-26") -- siehe _maybe_add_manual_entfall().
+ADD_ENTFALL_DATE = os.environ.get("ADD_ENTFALL_DATE", "").strip()
 
 # ════════════════════════════════════════════════════════════════
 #  STATE (gespeichert auf dem Server als state_auto.json)
@@ -491,6 +494,37 @@ def _entfall_is_recent(iso_date, today, max_age_days=14):
     except Exception:
         return False
     return (today - d).days <= max_age_days
+
+def _maybe_add_manual_entfall(sftp, iso_date):
+    """Traegt ein Datum manuell in trainingsentfall.json nach (workflow_dispatch-
+    Input 'add_entfall_date'). trainingsentfall.json ist normalerweise reine
+    Website-Pflege (Single Source of Truth) -- diese Funktion ist ein Notausweg
+    fuer den Fall, dass ein Training mündlich/nachtraeglich als abgesagt
+    gemeldet wird, ohne dass der Website-Weg genutzt wurde. Schreibt nur, wenn
+    das Datum noch nicht in der Liste steht."""
+    if not iso_date:
+        return
+    try:
+        datetime.strptime(iso_date, "%Y-%m-%d")
+    except Exception:
+        print(f"[ENTFALL] add_entfall_date '{iso_date}' ist kein gueltiges YYYY-MM-DD -> ignoriert.")
+        return
+    try:
+        f = sftp.open("abmeldungen/trainingsentfall.json", "r")
+        data = json.loads(f.read().decode("utf-8", errors="replace"))
+        f.close()
+        if not isinstance(data, list):
+            data = []
+    except Exception:
+        data = []
+    if iso_date in data:
+        print(f"[ENTFALL] {iso_date} war bereits in trainingsentfall.json.")
+        return
+    data.append(iso_date)
+    f = sftp.open("abmeldungen/trainingsentfall.json", "w")
+    f.write(json.dumps(data, indent=2, ensure_ascii=False).encode("utf-8"))
+    f.close()
+    print(f"[ENTFALL] {iso_date} manuell zu trainingsentfall.json hinzugefuegt.")
 
 def _publish_entfall_for(sftp, state, fixed_entries, iso_date, entfall_published):
     """Veroeffentlicht (falls noetig) den Entfall-Hinweis fuer EIN einzelnes Datum aus
@@ -2425,6 +2459,9 @@ def main():
     # trainingsentfall.json ist die Single Source of Truth. Ist das nächste Training
     # als Entfall markiert, wird KEIN normaler Plan erzeugt, sondern der Entfall-Hinweis
     # veröffentlicht. Wird der Entfall wieder aufgehoben, erzeugt das System einen frischen Plan.
+    if ADD_ENTFALL_DATE:
+        _maybe_add_manual_entfall(sftp, ADD_ENTFALL_DATE)
+
     entfall_list      = read_trainingsentfall(sftp)
     datum_iso         = training_date.strftime("%Y-%m-%d")
     entfall_published = state.setdefault("entfall_published", [])

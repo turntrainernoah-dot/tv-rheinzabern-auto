@@ -7,7 +7,7 @@ die im Aufgabentext geforderte Testmatrix, so weit sie ohne Live-Server/PC-Zugri
 moeglich ist. Wird NICHT automatisch ausgefuehrt - manuell mit `python3
 test_gruppenzeiten.py` starten.
 """
-import sys, os, random
+import sys, os, random, json
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import auto_trainingsplan as a
@@ -609,6 +609,54 @@ def test_entfall_ignoriert_alte_karteileichen():
           a._entfall_is_recent("nicht-ein-datum", today) is False)
 
 
+class _FakeSftpFile:
+    def __init__(self, store, key):
+        self.store, self.key = store, key
+        self._buf = store.get(key, b"[]")
+    def read(self):
+        return self._buf
+    def write(self, data):
+        self.store[self.key] = data
+    def close(self):
+        pass
+
+class _FakeSftp:
+    def __init__(self, files):
+        self.files = files
+    def open(self, path, mode="r"):
+        if "r" in mode and path not in self.files:
+            raise FileNotFoundError(path)
+        return _FakeSftpFile(self.files, path)
+
+
+def test_maybe_add_manual_entfall():
+    """Notausweg-Feature (workflow_dispatch-Input 'add_entfall_date', 30.08.2026):
+    ein Training, das nur muendlich/nachtraeglich als abgesagt gemeldet wurde
+    (kein Eintrag ueber die Website), kann so trotzdem in trainingsentfall.json
+    nachgetragen werden. trainingsentfall.json bleibt normalerweise reine
+    Website-Pflege -- das hier ist bewusst nur ein Notausweg."""
+    sftp = _FakeSftp({"abmeldungen/trainingsentfall.json": json.dumps(["2026-08-14"]).encode("utf-8")})
+    a._maybe_add_manual_entfall(sftp, "2026-08-26")
+    data = json.loads(sftp.files["abmeldungen/trainingsentfall.json"])
+    check("neues Datum wird ergaenzt, bestehende Eintraege bleiben erhalten",
+          set(data) == {"2026-08-14", "2026-08-26"}, f"{data}")
+
+    a._maybe_add_manual_entfall(sftp, "2026-08-26")
+    data2 = json.loads(sftp.files["abmeldungen/trainingsentfall.json"])
+    check("erneuter Aufruf fuer dasselbe Datum dupliziert nicht",
+          data2.count("2026-08-26") == 1, f"{data2}")
+
+    sftp2 = _FakeSftp({})
+    a._maybe_add_manual_entfall(sftp2, "kein-datum")
+    check("ungueltiges Datum wird ignoriert, legt auch keine Datei an",
+          "abmeldungen/trainingsentfall.json" not in sftp2.files)
+
+    sftp3 = _FakeSftp({})
+    a._maybe_add_manual_entfall(sftp3, "")
+    check("leerer String tut gar nichts",
+          "abmeldungen/trainingsentfall.json" not in sftp3.files)
+
+
 if __name__ == "__main__":
     test_regression_grid()
     test_regression_plan_shape()
@@ -625,6 +673,7 @@ if __name__ == "__main__":
     test_rotation_ueberlebt_wechselnde_merges()
     test_entfall_verarbeitet_alle_termine_nicht_nur_naechsten()
     test_entfall_ignoriert_alte_karteileichen()
+    test_maybe_add_manual_entfall()
     print()
     if FAILS:
         print(f"{len(FAILS)} FEHLGESCHLAGEN:")
