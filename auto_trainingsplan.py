@@ -1374,7 +1374,18 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
     ws.title = "Trainingsplan"
 
     trainer_col = 3 + len(GRUPPEN_ORDER)   # Spalte "TRAINER" in der Anwesenheitstabelle
-    end_col     = trainer_col + 1          # rechte Randspalte (wie frueher Spalte 8 bei 4 Gruppen)
+    # Bugfix 31.08.2026 (Noah: "eine Gruppe weniger -> Balken schmaler, aber
+    # Trainer bleiben gleich, jetzt schaut ein Trainer raus"): end_col wurde
+    # bisher NUR aus der Gruppenzahl berechnet. Bei 4 Gruppen + 6 Trainern
+    # trafen sich beide Tabellen zufaellig auf derselben Spalte 8, deshalb
+    # fiel das nie auf -- bei 3 Gruppen reicht die Anwesenheitstabelle nicht
+    # mehr bis zur letzten Trainer-Spalte der Trainer-Einteilungstabelle.
+    # Jetzt richtet sich die rechte Randspalte (und damit die Breite aller
+    # gemergten Kopf-/Legenden-Balken) nach der jeweils breiteren der beiden
+    # Tabellen -- unabhaengig von Gruppen- ODER Trainerzahl immer so breit
+    # wie alle Trainer-Spalten.
+    trainer_tabelle_end_col = 2 + len(ALLE_TRAINER)   # letzte Spalte der Trainer-Einteilungstabelle
+    end_col     = max(trainer_col + 1, trainer_tabelle_end_col)   # rechte Randspalte
     n_cols      = max(9, end_col + 1)      # mind. A-I wie frueher, sonst dynamisch breiter
 
     for ci in range(1, n_cols + 1):

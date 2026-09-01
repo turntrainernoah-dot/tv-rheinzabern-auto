@@ -424,6 +424,61 @@ def test_edge_cases():
     check("alle Turner abwesend -> kein Training", "ACHTUNG" in anm[0], f"{anm}")
 
 
+def test_excel_balken_breite_folgt_trainerzahl():
+    """Bugfix 31.08.2026 (Noah: "eine Gruppe weniger -> Balken schmaler,
+    aber Trainer bleiben gleich, jetzt schaut ein Trainer raus"): die
+    gemergten Kopf-/Legenden-Balken in build_excel() wurden bisher nur aus
+    der Gruppenzahl berechnet. Bei 4 Gruppen + 6 Trainern trafen sich beide
+    Tabellen zufaellig auf derselben rechten Spalte, deshalb fiel das nie
+    auf -- bei 3 Gruppen reicht der Balken nicht mehr bis zur letzten
+    Trainer-Spalte der Trainer-Einteilungstabelle. Jetzt richtet sich die
+    rechte Randspalte nach der jeweils breiteren der beiden Tabellen."""
+    gruppen = ["G1", "G2", "G3"]
+    turner = {g: [f"{g}K{i}" for i in range(1, 4)] for g in gruppen}
+    trainer = ["T1", "T2", "T3", "T4", "T5", "T6"]  # 6 Trainer, nur 3 Gruppen
+    set_roster(gruppen, turner, trainer)
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+    absences = no_absences(gruppen)
+    plan, sondertiming, anm = a.build_trainer_plan(absences, grid_rows, grid_phase)
+
+    # LibreOffice-Konvertierung ist fuer diesen Test irrelevant (es geht nur
+    # um die Excel-Zellstruktur) und in mancher Sandbox nicht lauffaehig --
+    # genau wie test_main_e2e.py build_excel komplett mockt, wird hier nur
+    # der subprocess.run()-Aufruf durch einen Fake ersetzt, der die vom Code
+    # erwartete PDF-Datei einfach anlegt.
+    def _fake_subprocess_run(cmd, **kwargs):
+        outdir = cmd[cmd.index("--outdir") + 1]
+        pdf_name = os.path.basename(cmd[-1]).replace(".xlsx", ".pdf")
+        with open(os.path.join(outdir, pdf_name), "wb") as f:
+            f.write(b"%PDF-1.4 fake")
+        class _FakeResult:
+            returncode = 0
+            stderr = ""
+        return _FakeResult()
+
+    _orig_run = a.subprocess.run
+    a.subprocess.run = _fake_subprocess_run
+    try:
+        xlsx_path, _pdf_path = a.build_excel(
+            datum="02.09.2026", wochentag="Mittwoch",
+            geraet_1="Sprung", geraet_2="Reck", abwesend=absences,
+            trainer_plan=plan, sondertiming=sondertiming, anmerkungen=anm,
+            grid_rows=grid_rows,
+        )
+    finally:
+        a.subprocess.run = _orig_run
+    import openpyxl as _op
+    wb = _op.load_workbook(xlsx_path)
+    ws = wb.active
+    letzte_trainer_spalte = 2 + len(trainer)   # Spalte des letzten Trainers in der Einteilungstabelle
+    title_merges = [mr for mr in ws.merged_cells.ranges if mr.min_row == 1]
+    check("Titel-Balken existiert", len(title_merges) == 1, f"{ws.merged_cells.ranges}")
+    if title_merges:
+        check("Titel-Balken reicht bis zur letzten Trainer-Spalte (nicht nur bis zur Gruppenspalte)",
+              title_merges[0].max_col >= letzte_trainer_spalte,
+              f"max_col={title_merges[0].max_col} erwartet>={letzte_trainer_spalte}")
+
+
 # ════════════════════════════════════════════════════════════════
 # 5) Geraet-Tausch: admin-konfigurierbare Geraete-Reihenfolge pro Gruppe
 #    (loest die Kapazitaetskollision bei 3+ Gruppen mit identischer Zeit,
@@ -799,6 +854,7 @@ if __name__ == "__main__":
     test_ki_path_parity()
     test_ki_assign_respects_immer_springer()
     test_edge_cases()
+    test_excel_balken_breite_folgt_trainerzahl()
     test_geraet_tausch()
     test_partial_trainer_holds_group()
     test_deterministic_timing_parser()
