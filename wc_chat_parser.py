@@ -184,53 +184,184 @@ def _augment_deterministic(raw_chat, clean_str, name_map):
     return "\n".join(lines), added
 
 
+# ====================================================================
+#  DETERMINISTISCHER CHAT-PARSER (ab 03.09.2026)
+#  --------------------------------------------------------------
+#  GitHub Models (die bisherige KI-Grundlage fuer _call_github_models
+#  oben) wurde von GitHub am 30.07.2026 vollstaendig abgeschaltet
+#  (HTTP 410 "github_models_retirement_brownout"). Seitdem schlug die
+#  KI-Auswertung im Hintergrund still fehl -- der Workflow lief
+#  "gruen" durch, aber es passierte nichts ("Kein verwertbarer Chat
+#  gefunden"), ohne jede Fehlermeldung an Noah.
+#
+#  Ersatz: ein regelbasierter Parser, der dieselben Regeln aus dem
+#  SYSTEM_PROMPT oben nachbildet (Selbst-/Fremdmeldung, "gestern",
+#  "vorgestern", Wochentagsnamen, "jeden Tag"-Sammelaussagen). Braucht
+#  keinen Account/Token/Internetzugriff mehr -- laeuft rein lokal.
+#  _call_github_models() bleibt oben unveraendert erhalten, falls
+#  GitHub oder ein anderer Anbieter spaeter wieder eine kostenlose
+#  Chat-Vervollstaendigung anbietet.
+# ====================================================================
+
+import datetime as _dt
+
+_WOCHENTAGE_CHAT = {
+    "montag": 0, "dienstag": 1, "mittwoch": 2, "donnerstag": 3,
+    "freitag": 4, "samstag": 5, "sonntag": 6,
+}
+
+_MSG_START_RE = re.compile(
+    r"^\[\s*(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s*,\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*\]\s*([^:]+?):\s*(.*)$"
+)
+_GESTERN_RE = re.compile(
+    r"f[uü]r\s+gestern|nachtr[aä]glich|war\s+gestern\s+auch\s+da|\bgestern\b", re.I)
+_VORGESTERN_RE = re.compile(r"\bvorgestern\b", re.I)
+_JEDEN_TAG_RE = re.compile(
+    r"jeden\s+tag|jeden\s+trainingstag|immer\s+da|jedes\s*mal|an\s+allen\s+tagen|alle\s+tage", re.I)
+_WEEKDAY_RE = re.compile(
+    r"\b(?:am\s+)?(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b", re.I)
+
+
+def _split_chat_messages(raw_chat):
+    """Zerlegt den rohen WhatsApp-Export in Nachrichten {date, sender, body}.
+    Mehrzeilige Nachrichten (kein neuer Zeitstempel) werden an die vorherige
+    Nachricht angehaengt."""
+    messages = []
+    cur = None
+    for raw_line in raw_chat.splitlines():
+        line = raw_line.strip()
+        m = _MSG_START_RE.match(line)
+        if m:
+            if cur:
+                messages.append(cur)
+            day, mon, yr, hh, mi, sender, body = m.groups()
+            yr = int(yr)
+            if yr < 100:
+                yr += 2000
+            try:
+                mdate = _dt.date(yr, int(mon), int(day))
+            except ValueError:
+                cur = None
+                continue
+            cur = {"date": mdate, "sender": sender.strip(), "body": body.strip()}
+        elif cur is not None and line:
+            cur["body"] = (cur["body"] + " " + line).strip()
+    if cur:
+        messages.append(cur)
+    return messages
+
+
+def _find_name_in_text(text, lookup, exclude_canon=None):
+    """Laengster passender Roster-Alias in text (wortgrenzen-sicher), optional
+    unter Ausschluss eines kanonischen Namens. None wenn nichts passt."""
+    t = " " + str(text).lower() + " "
+    best = None
+    for alias, canon in lookup.items():
+        if not alias or (exclude_canon and canon == exclude_canon):
+            continue
+        pat = r"(?<![0-9a-zäöüß])" + re.escape(alias) + r"(?![0-9a-zäöüß])"
+        if re.search(pat, t):
+            if best is None or len(alias) > len(best[0]):
+                best = (alias, canon)
+    return best[1] if best else None
+
+
+def _resolve_weekday(msg_date, weekday_name_de):
+    """Findet den Tag mit dem genannten Wochentagsnamen in der Woche der
+    Nachricht (Mo-So), analog resolve_date_modifier() in auto_wochenchallenge.py."""
+    target = _WOCHENTAGE_CHAT.get(weekday_name_de.lower())
+    if target is None:
+        return msg_date
+    days_diff = (target - msg_date.weekday()) % 7
+    if days_diff > 3:
+        days_diff -= 7
+    return msg_date + _dt.timedelta(days=days_diff)
+
+
+def parse_chat_deterministic(raw_chat, name_map):
+    """Regelbasierter Ersatz fuer die KI-Auswertung (siehe SYSTEM_PROMPT oben).
+    Gibt (clean_body_text, info_dict) zurueck -- gleiche Form wie zuvor mit KI.
+    info_dict: 'unsure' (Liste), 'dropped' (Liste), 'count' (int)."""
+    lookup = _canon_set(name_map)
+    messages = _split_chat_messages(raw_chat)
+
+    entries = set()          # {(date_str, canon)}
+    unsure = []
+    dropped = []
+    jeden_tag_targets = []   # kanon. Namen aus "jeden Tag"-Aussagen
+    all_msg_dates = [m["date"] for m in messages]
+
+    for msg in messages:
+        body = msg["body"]
+        if not body or "?" in body:
+            continue  # leer oder vermutlich eine Frage -> kein Report
+
+        sender_canon = _find_name_in_text(msg["sender"], lookup)
+
+        if _JEDEN_TAG_RE.search(body):
+            target = _find_name_in_text(body, lookup) or sender_canon
+            if target:
+                jeden_tag_targets.append(target)
+            else:
+                unsure.append("%s %s: 'jeden Tag' aber kein Name erkannt" % (
+                    msg["date"].strftime("%d.%m"), msg["sender"]))
+            continue
+
+        other_canon = _find_name_in_text(body, lookup, exclude_canon=sender_canon)
+        subject = other_canon or sender_canon
+        if not subject:
+            unsure.append("%s %s: kein Roster-Name erkannt (%r)" % (
+                msg["date"].strftime("%d.%m"), msg["sender"], body[:60]))
+            continue
+
+        if _VORGESTERN_RE.search(body):
+            day = msg["date"] - _dt.timedelta(days=2)
+        elif _GESTERN_RE.search(body):
+            day = msg["date"] - _dt.timedelta(days=1)
+        else:
+            wd = _WEEKDAY_RE.search(body)
+            day = _resolve_weekday(msg["date"], wd.group(1)) if wd else msg["date"]
+
+        entries.add(("%02d.%02d" % (day.day, day.month), subject))
+
+    if jeden_tag_targets:
+        if all_msg_dates:
+            dmin, dmax = min(all_msg_dates), max(all_msg_dates)
+            rng = []
+            d = dmin
+            while d <= dmax:
+                rng.append(d)
+                d += _dt.timedelta(days=1)
+            for target in jeden_tag_targets:
+                for dd in rng:
+                    entries.add(("%02d.%02d" % (dd.day, dd.month), target))
+        else:
+            unsure.append("'jeden Tag'-Aussage(n) gefunden, aber kein Datum im Chat: " +
+                           ", ".join(jeden_tag_targets))
+
+    lines = sorted("%s %s" % (d, n) for d, n in entries)
+    info = {"unsure": unsure, "dropped": dropped, "count": len(lines)}
+    return "\n".join(lines), info
+
+
 def chat_to_clean_body(raw_chat, name_map, gruppen_template,
                        token=None, model=None, verbose=True):
     """
     Gibt (clean_body_text, info_dict) zurueck.
     clean_body_text passt direkt in parse_email_body().
     info_dict enthaelt 'unsure' (Liste) und 'dropped' (ungueltige Namen).
+
+    Seit 03.09.2026: nutzt parse_chat_deterministic() statt GitHub Models
+    (von GitHub am 30.07.2026 komplett abgeschaltet, siehe Kommentar oben
+    bei _call_github_models). token/model bleiben aus Kompatibilitaets-
+    gruenden im Funktionskopf, werden aber nicht mehr benutzt.
     """
-    # Mehrere Token-Quellen nacheinander probieren (selbstheilend): explizit
-    # uebergebenes Token, dann GH_MODELS_TOKEN-Secret, dann das in Actions immer
-    # gueltige GITHUB_TOKEN (Job-Permission models: read). So scheitert der
-    # KI-Aufruf nicht mehr, wenn ein einzelnes Token ungueltig ist.
-    candidates = []
-    for _t in (token, os.environ.get("GH_MODELS_TOKEN"), os.environ.get("GITHUB_TOKEN")):
-        if _t and _t not in candidates:
-            candidates.append(_t)
-    if not candidates:
-        raise RuntimeError("Kein GH_MODELS_TOKEN / GITHUB_TOKEN gesetzt.")
-
-    roster = build_roster_text(name_map, gruppen_template)
-    user_msg = (f"ROSTER (nur diese Personen sind gueltig):\n{roster}\n\n"
-                f"WhatsApp-Chat:\n{raw_chat.strip()}")
-    messages = [{"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_msg}]
-
-    content = None
-    errors = []
-    for _tk in candidates:
-        try:
-            content = _call_github_models(messages, _tk, model)
-            break
-        except urllib.error.HTTPError as e:
-            try: _d = e.read().decode("utf-8", "replace")[:160]
-            except Exception: _d = ""
-            errors.append(f"HTTP {e.code} (Token ...{_tk[-4:]}): {_d}")
-        except Exception as e:
-            errors.append(f"{type(e).__name__} (Token ...{_tk[-4:]}): {e}")
-    if content is None:
-        raise RuntimeError("GitHub-Models-Aufruf fehlgeschlagen: " + " | ".join(errors))
-
-    clean, info = clean_from_model_json(content, name_map, verbose=False)
-    clean, added = _augment_deterministic(raw_chat, clean, name_map)
-    info["deterministic_added"] = added
-    info["count"] = len([l for l in clean.splitlines() if l.strip()])
+    clean, info = parse_chat_deterministic(raw_chat, name_map)
     if verbose:
-        print("[KI-PARSER] %d Eintraege, %d deterministisch ergaenzt, %d verworfen, %d unsicher." % (
-            info["count"], len(added), len(info.get("dropped", [])), len(info.get("unsure", []))))
-        for a in added: print("  [det+] " + a)
+        print("[CHAT-PARSER] %d Eintraege, %d unsicher." % (
+            info["count"], len(info.get("unsure", []))))
+        for u in info.get("unsure", []):
+            print("  [unsicher] " + u)
     return clean, info
 
 

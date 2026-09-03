@@ -585,13 +585,20 @@ def require_server_roster():
 
 def fetch_chat_body(sftp):
     """Chat-Modus: liest den rohen WhatsApp-Chat (von admin.php abgelegt) vom
-    Server und laesst ihn von der KI (GitHub Models) in das saubere
-    parse_email_body-Format umwandeln. Gibt (clean_body, info) oder (None, None)."""
+    Server und wertet ihn deterministisch (regelbasiert, siehe wc_chat_parser.py)
+    in das saubere parse_email_body-Format aus. Gibt (clean_body, info) oder
+    (None, None). Diese Funktion laeuft NUR wenn WC_SOURCE=chat, also nur wenn
+    Noah aktiv 'Wochenchallenge per Chat erstellen' geklickt hat -- jeder
+    Fehlschlag hier ist deshalb eine echte Ueberraschung fuer ihn und wird
+    per Mail gemeldet (statt wie bis 03.09.2026 nur still im SFTP-Log)."""
     try:
         f = sftp.open(CHAT_REMOTE, "r")
         raw = f.read().decode("utf-8"); f.close()
     except Exception as e:
         print(f"[CHAT] Keine {CHAT_REMOTE} auf dem Server ({e!r}).")
+        send_email("Wochenchallenge (Chat): kein Chat gefunden\n\n"
+                    f"Auf dem Server liegt keine {CHAT_REMOTE} ({e!r}).\n"
+                    "Hast du den Chat in admin.php eingefuegt und abgeschickt?")
         return None, None
     try:
         payload = json.loads(raw)
@@ -599,34 +606,51 @@ def fetch_chat_body(sftp):
     except Exception:
         raw_chat = raw
     if not raw_chat.strip():
-        print("[CHAT] Chat-Datei leer."); return None, None
+        print("[CHAT] Chat-Datei leer.")
+        send_email("Wochenchallenge (Chat): Chat-Datei war leer\n\n"
+                    "Die hochgeladene Chat-Datei war leer. Bitte den WhatsApp-Chat "
+                    "erneut in admin.php einfuegen und abschicken.")
+        return None, None
     try:
         with sftp.open("wc_last_run.txt", "w") as _rf:
-            _rf.write(f"{date.today()} chat-mode erreicht, chat_len={len(raw_chat)}, "
-                      f"token_gesetzt={bool(GH_MODELS_TOKEN)}")
+            _rf.write(f"{date.today()} chat-mode erreicht, chat_len={len(raw_chat)}")
     except Exception:
         pass
-    # Erst KI-Auswertung, DANN als .processed markieren. Bei KI-Fehler bleibt der
+    # Erst Auswertung, DANN als .processed markieren. Bei Fehler bleibt der
     # Chat erhalten und kann erneut verarbeitet werden (kein Datenverlust).
     import wc_chat_parser
     try:
         body, info = wc_chat_parser.chat_to_clean_body(
             raw_chat, NAME_MAP, WC_GRUPPEN_TEMPLATE, token=GH_MODELS_TOKEN)
     except Exception as e:
-        print(f"[CHAT] KI-Auswertung fehlgeschlagen: {e!r} -- Chat bleibt erhalten.")
+        print(f"[CHAT] Auswertung fehlgeschlagen: {e!r} -- Chat bleibt erhalten.")
         try:
             with sftp.open("wc_last_error.txt", "w") as _ef:
-                _ef.write(f"{date.today()} KI-Fehler: {e!r}")
+                _ef.write(f"{date.today()} Fehler: {e!r}")
         except Exception:
             pass
+        send_email("Wochenchallenge (Chat): Auswertung fehlgeschlagen\n\n"
+                    f"Fehler beim Auswerten des Chats: {e!r}\n\n"
+                    "Der Chat bleibt auf dem Server erhalten und wird beim naechsten "
+                    "Lauf erneut versucht. Bitte bei Bedarf in admin.php pruefen.")
         return None, None
     if not body or not body.strip():
-        print("[CHAT] KI lieferte keine verwertbaren Zeilen -- Chat bleibt erhalten.")
+        print("[CHAT] Auswertung lieferte keine verwertbaren Zeilen -- Chat bleibt erhalten.")
         try:
             with sftp.open("wc_last_error.txt", "w") as _ef:
                 _ef.write(f"{date.today()} LEERER Body. info={info!r}")
         except Exception:
             pass
+        unsure_txt = "\n".join(info.get("unsure", [])) if info else ""
+        send_email("Wochenchallenge (Chat): keine Eintraege erkannt\n\n"
+                    "Im eingefuegten Chat wurde kein einziger gueltiger Trainings-"
+                    "Eintrag erkannt.\n\n"
+                    "Moegliche Gruende: falsches Zeitstempel-Format beim Chat-Export, "
+                    "keiner der Namen passt zum Roster, oder es waren nur Rueckfragen "
+                    "ohne Trainings-Meldung dabei.\n\n"
+                    + (f"Unsichere/uebersprungene Zeilen:\n{unsure_txt}\n\n" if unsure_txt else "")
+                    + "Der Chat bleibt auf dem Server erhalten -- bitte in admin.php "
+                      "pruefen und ggf. erneut einfuegen.")
         return None, None
     try:
         try: sftp.remove(CHAT_REMOTE + ".processed")
@@ -634,8 +658,13 @@ def fetch_chat_body(sftp):
         sftp.rename(CHAT_REMOTE, CHAT_REMOTE + ".processed")
     except Exception as e:
         print(f"[CHAT] Konnte {CHAT_REMOTE} nicht umbenennen: {e!r}")
-    print("[CHAT] KI-bereinigter Body:\n" + body)
+    print("[CHAT] bereinigter Body:\n" + body)
+    if info and info.get("unsure"):
+        print("[CHAT] Uebersprungen/unsicher:")
+        for u in info["unsure"]:
+            print("  - " + u)
     return body, info
+
 
 
 def main():
