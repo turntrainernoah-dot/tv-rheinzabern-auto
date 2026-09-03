@@ -1701,9 +1701,7 @@ def build_admin_trainer_plan(absences, partial, grid_rows, grid_phase, trainer_r
         labels = {str(c[0]).strip() for c in partial[t]
                   if isinstance(c, (list, tuple)) and len(c) >= 2 and c[0]}
         for lab in labels:
-            norm = _ki_norm_merge(lab) or (lab if lab in GRUPPEN_ORDER else None)
-            if norm:
-                covered_groups.update(norm.split("+"))
+            covered_groups.update(_groups_in_label(lab))
 
     abs2 = {k: list(v) for k, v in absences.items()}
     abs2.setdefault("Trainer", [])
@@ -1874,6 +1872,30 @@ def _ki_norm_merge(label):
     if len(parts) < 2:
         return None
     return "+".join(sorted(parts, key=lambda g: GRUPPEN_ORDER.index(g)))
+
+def _groups_in_label(label):
+    """Extrahiert alle Gruppennamen aus einem Admin-Zellentext, z.B. 'G1',
+    'G3+G4' -- aber auch aus einem Aufwaermen-Label wie 'AW G1'/'AW G3+G4'.
+    Bugfix 03.09.2026 (Noah: Anmerkung 'ACHTUNG: kein Trainer mehr fuer:
+    G1, G2, G3+G4' erschien, obwohl alle Gruppen tatsaechlich einen Trainer
+    hatten): _ki_norm_merge() allein erkennt nur den nackten Gruppennamen
+    ('G1') oder eine nackte Zusammenlegung ('G3+G4'), NICHT das 'AW '-Praefix
+    aus dem Aufwaermen-Picker im Admin-Editor (admin.php). Hatte ein im
+    Admin manuell fest zugeteilter Trainer nur Aufwaermen-Zellen gesetzt
+    (kein nacktes Gruppen-Label in irgendeiner Zeile), blieb covered_groups()
+    fuer seine Gruppe(n) leer -- der Rest-Builder hielt die Gruppe faelschlich
+    fuer unbesetzt, obwohl der Trainer sie laut Plan haelt, UND der Trainer
+    war schon aus dem verfuegbaren Pool entfernt (siehe committed weiter
+    unten) -- zusammen ergab das die falsche 'kein Trainer mehr'-Anmerkung."""
+    lab = str(label or "").strip()
+    if lab.startswith("AW "):
+        lab = lab[3:].strip()
+    norm = _ki_norm_merge(lab)
+    if norm:
+        return set(norm.split("+"))
+    if lab in GRUPPEN_ORDER:
+        return {lab}
+    return set()
 
 def _merge_small_singletons(groups, present, gruppen_zeiten, min_kids=3):
     """Legt zu kleine (<min_kids anwesende Kinder) benachbarte Einzelgruppen
