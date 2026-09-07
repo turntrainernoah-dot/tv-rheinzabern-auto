@@ -636,10 +636,15 @@ def _min_to_hhmm(m):
 
 # Sonderregel (Noah, 07.09.2026): "Aufbauen" bezeichnet WOERTLICH nur das
 # feste Zeitfenster 17:00-17:30 (Geraete aufbauen, bevor irgendein Training
-# beginnt). Jede andere Randzeile eines freien/wartenden Trainers -- vorher
-# je nach Fall "Aufbauen" (Gruppe startet erst spaeter) oder "Abbauen"
-# (Gruppe/Springer-Slot ist schon vorbei) -- heisst ab jetzt einheitlich
-# "Springer". "Abbauen" als Zellentext entfaellt komplett.
+# beginnt). "Abbauen" ist NICHT an eine feste Uhrzeit gebunden, sondern
+# immer die tatsaechlich LETZTE Zeile des jeweiligen Tagesrasters -- endet
+# das Training normal um 19:00, ist 18:15-19:00 Abbauen; laeuft es wegen
+# einer spaeter endenden Gruppe bis 19:45, ist stattdessen 19:00-19:45
+# Abbauen. Jede Randzeile DAZWISCHEN (weder das feste Aufbauen-Fenster noch
+# die letzte Zeile) heisst "Springer" -- vorher wurde dafuer je nach Fall
+# ebenfalls "Aufbauen" (Gruppe startet erst spaeter) oder "Abbauen"
+# (Gruppe/Springer-Slot ist schon vorbei, aber nicht die letzte Zeile)
+# verwendet.
 _AUFBAUEN_FENSTER = (_hhmm_to_min(_STANDARD_ZEITEN["aufwaermen"]["start"]),
                      _hhmm_to_min(_STANDARD_ZEITEN["aufwaermen"]["ende"]))
 
@@ -1001,6 +1006,7 @@ def _cells_for_unit(label, groups, grid_rows, grid_phase):
     dienen)."""
     ref = groups[0]
     ref_phases = grid_phase.get(ref) or [None] * len(grid_rows)
+    last_row = len(grid_rows) - 1
     cells = []
     for i in range(len(grid_rows)):
         phase = ref_phases[i] if i < len(ref_phases) else None
@@ -1010,13 +1016,23 @@ def _cells_for_unit(label, groups, grid_rows, grid_phase):
             cells.append((label, farbe_fuer_phase(_effektive_phase(ref, phase))))
         elif _ist_aufbauen_zeile(grid_rows[i]):
             cells.append(("Aufbauen", "aufbauen"))
+        elif i == last_row:
+            cells.append(("Abbauen", "aufbauen"))
         else:
             cells.append(("Springer", "springer"))
     return cells
 
 def _springer_cells(grid_rows):
-    return [("Aufbauen", "aufbauen") if _ist_aufbauen_zeile(row) else ("Springer", "springer")
-            for row in grid_rows]
+    n = len(grid_rows)
+    cells = []
+    for i, row in enumerate(grid_rows):
+        if _ist_aufbauen_zeile(row):
+            cells.append(("Aufbauen", "aufbauen"))
+        elif i == n - 1:
+            cells.append(("Abbauen", "aufbauen"))
+        else:
+            cells.append(("Springer", "springer"))
+    return cells
 
 def unit_label(groups):
     return "+".join(groups)
@@ -1463,7 +1479,7 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
         (geraet_1, FARBEN["g1_blau"]),
         (geraet_2, FARBEN["g2_orange"]),
         ("Aufwaermen", FARBEN["aufwaermen"]),
-        ("Aufbauen", FARBEN["aufbauen"]),
+        ("Aufbauen/Abbauen", FARBEN["aufbauen"]),
         ("Springer", FARBEN["springer"]),
     ]
     for ci, (label, hex_c) in enumerate(items, start=2):
@@ -1698,7 +1714,8 @@ def build_admin_trainer_plan(absences, partial, grid_rows, grid_phase, trainer_r
     erkannt) werden fuer den Rest-Builder als 'voll abwesend' markiert, damit sie nicht
     doppelt vergeben werden - und der Rest nutzt build_ki_einteilung, wenn ki.assign/
     merges vorhanden sind. Leere Randzeiten (erste/letzte Zeile) werden mit
-    Aufbauen (nur im 17:00-17:30-Fenster) bzw. sonst Springer gefuellt."""
+    Aufbauen (nur im 17:00-17:30-Fenster, sonst Springer) bzw. Abbauen
+    (immer die tatsaechlich letzte Zeile des Tagesrasters) gefuellt."""
     partial = partial or {}
     ki = ki or {}
     committed = [t for t, s in partial.items()
@@ -1744,7 +1761,9 @@ def build_admin_trainer_plan(absences, partial, grid_rows, grid_phase, trainer_r
                 out.append((c[0], c[1]))
             elif i == 0 and i < len(grid_rows) and _ist_aufbauen_zeile(grid_rows[i]):
                 out.append(("Aufbauen", "aufbauen"))
-            elif i == 0 or i == n - 1:
+            elif i == n - 1:
+                out.append(("Abbauen", "aufbauen"))
+            elif i == 0:
                 out.append(("Springer", "springer"))
             else:
                 out.append(("", ""))
