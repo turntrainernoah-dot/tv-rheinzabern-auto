@@ -72,12 +72,13 @@ def test_regression_plan_shape():
     holders = {t: c for t, c in plan.items() if c and any(ck in ("g1_blau", "g2_orange") for _, ck in c)}
     check("jede Gruppe bekommt eigenen Halter", len(holders) == 4, f"{holders.keys()}")
     for t, cells in holders.items():
-        labels = {txt.replace("AW ", "") for txt, _ck in cells if txt not in ("Aufbauen", "Abbauen")}
+        labels = {txt.replace("AW ", "") for txt, _ck in cells if txt not in ("Aufbauen", "Springer")}
         check(f"{t}: genau ein Gruppen-Label", len(labels) == 1, f"{labels}")
-    g1_cells = next(c for t, c in holders.items() if "G1" in {x.replace("AW ", "") for x, _ in c if x not in ("Aufbauen","Abbauen")})
+    g1_cells = next(c for t, c in holders.items() if "G1" in {x.replace("AW ", "") for x, _ in c if x not in ("Aufbauen","Springer")})
     check("G1 Zeile0=aufwaermen", g1_cells[0][1] == "aufwaermen")
     check("G1 Zeile1=g1_blau (Geraet1)", g1_cells[1][1] == "g1_blau")
-    check("G1 letzte Zeile=Abbauen", g1_cells[-1] == ("Abbauen", "aufbauen"))
+    check("G1 letzte Zeile=Springer (kein Abbauen mehr, nur 17:00-17:30 heisst Aufbauen)",
+          g1_cells[-1] == ("Springer", "springer"), f"{g1_cells[-1]}")
     remaining = [t for t in trainer if t not in holders]
     check("1 uebriger Trainer wird Springer", len(remaining) == 1)
     if remaining:
@@ -200,10 +201,45 @@ def test_merge_compatibility():
     check("nur 1 Einheit besetzt (Rest bleibt ohne Trainer, ohne Anmerkung)", len(holder_cells) == 1)
     # Die besetzte Einheit darf NIE G1+G3 oder G2+G3 sein (inkompatible Zeiten)
     for c in holder_cells:
-        labels = {t.replace("AW ", "") for t, ck in c if t not in ("Aufbauen", "Abbauen")}
+        labels = {t.replace("AW ", "") for t, ck in c if t not in ("Aufbauen", "Springer")}
         lbl = list(labels)[0] if labels else ""
         check("besetzte Einheit enthaelt kein inkompatibles G3-Merge",
               not ("G3" in lbl and "+" in lbl), f"label={lbl}")
+
+# ════════════════════════════════════════════════════════════════
+# 5a2) Aufbauen/Springer-Sonderregel (Noah, 07.09.2026): "Aufbauen" gibt
+#      es woertlich nur im festen Fenster 17:00-17:30. Jede andere
+#      Randzeile eines freien/wartenden Trainers (frueher "Abbauen" oder
+#      "Aufbauen" ausserhalb 17:00-17:30) heisst jetzt "Springer".
+# ════════════════════════════════════════════════════════════════
+def test_aufbauen_nur_17_00_bis_17_30():
+    gruppen = ["G1", "G2", "G3", "G4"]
+    turner = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
+    trainer = ["T1", "T2", "T3"]  # weniger Trainer als Gruppen -> Merge + Springer noetig
+    set_roster(gruppen, turner, trainer)
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+    plan, _s, _anm = a.build_trainer_plan(no_absences(gruppen), grid_rows, grid_phase)
+    fehler = []
+    for t, cells in plan.items():
+        if not cells:
+            continue
+        for i, (txt, _ck) in enumerate(cells):
+            if txt == "Abbauen":
+                fehler.append(f"{t} Zeile {i}: 'Abbauen' sollte nicht mehr vorkommen")
+            if txt == "Aufbauen" and grid_rows[i] != a._AUFBAUEN_FENSTER:
+                fehler.append(f"{t} Zeile {i}: 'Aufbauen' ausserhalb 17:00-17:30 ({grid_rows[i]})")
+    check("kein 'Abbauen' mehr, 'Aufbauen' nur im 17:00-17:30-Fenster", not fehler, f"{fehler}")
+    # T1 haelt G1+G2 (endet vor G3/G4) -> letzte Randzeile jetzt 'Springer', nicht 'Abbauen'
+    t1_cells = plan.get("T1")
+    if t1_cells:
+        check("Randzeile nach frueh endender Gruppe ist 'Springer'",
+              t1_cells[-1] == ("Springer", "springer"), f"{t1_cells}")
+    # T2/T3 halten G3/G4 (starten erst nach 17:30) -> erste Zeile 'Aufbauen', nicht 'Springer'
+    for name in ("T2", "T3"):
+        cells = plan.get(name)
+        if cells:
+            check(f"{name}: Wartezeile vor spaeter startender Gruppe ist 'Aufbauen'",
+                  cells[0] == ("Aufbauen", "aufbauen"), f"{cells}")
 
 # ════════════════════════════════════════════════════════════════
 # 5b) G3/G4-Sonderregel (Noah, 07.09.2026): G3+G4 wieder als 2 eigene
@@ -372,7 +408,7 @@ def test_ki_path_parity():
     plan_ki, _s2, anm_ki = a.build_ki_einteilung(absences, {}, grid_rows, grid_phase)
 
     def unit_count(plan):
-        return len({tuple(sorted({t.replace("AW ", "") for t, ck in c if t not in ("Aufbauen", "Abbauen")}))
+        return len({tuple(sorted({t.replace("AW ", "") for t, ck in c if t not in ("Aufbauen", "Springer")}))
                     for c in plan.values() if c and any(ck in ("g1_blau", "g2_orange") for _, ck in c)})
 
     check("Auto-Pfad: 3 Einheiten (1 Merge noetig bei 3 Trainern/4 Gruppen)", unit_count(plan_auto) == 3,
@@ -878,6 +914,7 @@ if __name__ == "__main__":
     test_group_counts()
     test_trainer_counts_and_immer_springer()
     test_merge_compatibility()
+    test_aufbauen_nur_17_00_bis_17_30()
     test_g3g4_sonderregel_merge_schwelle()
     test_rotation_fairness()
     test_rotation_frequency_tiebreak_verhindert_statisches_muster()

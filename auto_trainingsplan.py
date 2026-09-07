@@ -634,6 +634,18 @@ def _hhmm_to_min(s):
 def _min_to_hhmm(m):
     return f"{m // 60:02d}:{m % 60:02d}"
 
+# Sonderregel (Noah, 07.09.2026): "Aufbauen" bezeichnet WOERTLICH nur das
+# feste Zeitfenster 17:00-17:30 (Geraete aufbauen, bevor irgendein Training
+# beginnt). Jede andere Randzeile eines freien/wartenden Trainers -- vorher
+# je nach Fall "Aufbauen" (Gruppe startet erst spaeter) oder "Abbauen"
+# (Gruppe/Springer-Slot ist schon vorbei) -- heisst ab jetzt einheitlich
+# "Springer". "Abbauen" als Zellentext entfaellt komplett.
+_AUFBAUEN_FENSTER = (_hhmm_to_min(_STANDARD_ZEITEN["aufwaermen"]["start"]),
+                     _hhmm_to_min(_STANDARD_ZEITEN["aufwaermen"]["ende"]))
+
+def _ist_aufbauen_zeile(row):
+    return tuple(row) == _AUFBAUEN_FENSTER
+
 def tag_of_date(d):
     """'mi'/'fr' aus einem Trainingsdatum -- Schluessel in GRUPPEN_ZEITEN."""
     return "mi" if d.weekday() == 2 else "fr"
@@ -683,15 +695,6 @@ def compute_time_grid(gruppen_zeiten, tag):
             row_phases.append(phase)
         phase_by_gruppe[g] = row_phases
     return rows, phase_by_gruppe
-
-def group_active_rows(row_phases):
-    """Erster/letzter Zeilen-Index einer Gruppe mit einer echten Phase (nicht
-    None) -- fuer die Aufbauen/Abbauen-Randzeilen (z.B. wartet eine Gruppe,
-    die spaeter beginnt, die erste Zeile mit Aufbauen statt Aufwaermen)."""
-    active = [i for i, p in enumerate(row_phases) if p is not None]
-    if not active:
-        return None, None
-    return active[0], active[-1]
 
 def zeiten_kompatibel(gruppen_zeiten, a, b):
     """True, wenn zwei Gruppen an BEIDEN Wochentagen exakt dieselben Phasen-
@@ -998,7 +1001,6 @@ def _cells_for_unit(label, groups, grid_rows, grid_phase):
     dienen)."""
     ref = groups[0]
     ref_phases = grid_phase.get(ref) or [None] * len(grid_rows)
-    first_active, last_active = group_active_rows(ref_phases)
     cells = []
     for i in range(len(grid_rows)):
         phase = ref_phases[i] if i < len(ref_phases) else None
@@ -1006,19 +1008,15 @@ def _cells_for_unit(label, groups, grid_rows, grid_phase):
             cells.append((f"AW {label}", "aufwaermen"))
         elif phase in ("geraet1", "geraet2"):
             cells.append((label, farbe_fuer_phase(_effektive_phase(ref, phase))))
-        elif first_active is not None and i > last_active:
-            cells.append(("Abbauen", "aufbauen"))
-        else:
+        elif _ist_aufbauen_zeile(grid_rows[i]):
             cells.append(("Aufbauen", "aufbauen"))
+        else:
+            cells.append(("Springer", "springer"))
     return cells
 
 def _springer_cells(grid_rows):
-    n = len(grid_rows)
-    if n == 0:
-        return []
-    if n == 1:
-        return [("Springer", "springer")]
-    return [("Aufbauen", "aufbauen")] + [("Springer", "springer")] * (n - 2) + [("Abbauen", "aufbauen")]
+    return [("Aufbauen", "aufbauen") if _ist_aufbauen_zeile(row) else ("Springer", "springer")
+            for row in grid_rows]
 
 def unit_label(groups):
     return "+".join(groups)
@@ -1465,7 +1463,7 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
         (geraet_1, FARBEN["g1_blau"]),
         (geraet_2, FARBEN["g2_orange"]),
         ("Aufwaermen", FARBEN["aufwaermen"]),
-        ("Aufbauen/Abbauen", FARBEN["aufbauen"]),
+        ("Aufbauen", FARBEN["aufbauen"]),
         ("Springer", FARBEN["springer"]),
     ]
     for ci, (label, hex_c) in enumerate(items, start=2):
@@ -1700,7 +1698,7 @@ def build_admin_trainer_plan(absences, partial, grid_rows, grid_phase, trainer_r
     erkannt) werden fuer den Rest-Builder als 'voll abwesend' markiert, damit sie nicht
     doppelt vergeben werden - und der Rest nutzt build_ki_einteilung, wenn ki.assign/
     merges vorhanden sind. Leere Randzeiten (erste/letzte Zeile) werden mit
-    Aufbauen/Abbauen gefuellt."""
+    Aufbauen (nur im 17:00-17:30-Fenster) bzw. sonst Springer gefuellt."""
     partial = partial or {}
     ki = ki or {}
     committed = [t for t, s in partial.items()
@@ -1744,10 +1742,10 @@ def build_admin_trainer_plan(absences, partial, grid_rows, grid_phase, trainer_r
         for i, c in enumerate(cells):
             if c and len(c) >= 2 and (c[0] or c[1]):
                 out.append((c[0], c[1]))
-            elif i == 0:
+            elif i == 0 and i < len(grid_rows) and _ist_aufbauen_zeile(grid_rows[i]):
                 out.append(("Aufbauen", "aufbauen"))
-            elif i == n - 1:
-                out.append(("Abbauen", "aufbauen"))
+            elif i == 0 or i == n - 1:
+                out.append(("Springer", "springer"))
             else:
                 out.append(("", ""))
         base[t] = out
