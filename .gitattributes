@@ -1,0 +1,31 @@
+# Angelegt 07.09.2026 (Effizienz-Audit).
+# Ohne diese Datei meldete `git status` in tv-memory 99 "geaenderte" Dateien,
+# die sich nur in den Zeilenenden unterschieden. Dadurch fielen echte
+# Aenderungen nicht mehr auf - so blieb der Wochenchallenge-Fix wochenlang
+# unbemerkt liegen. Nicht entfernen.
+
+# Standard: im Repo immer LF, im Arbeitsverzeichnis wie das System es braucht.
+* text=auto eol=lf
+
+# Windows-Startskripte MUESSEN CRLF behalten, sonst brechen die Doppelklick-
+# Werkzeuge (z.B. repo_sync.bat, Server-Backup ziehen.bat).
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binaerdateien nie anfassen.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.docx binary
+*.zip binary
+*.mp4 binary
+*.mov binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
