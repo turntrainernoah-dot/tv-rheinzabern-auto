@@ -76,6 +76,7 @@ Dieser Abschnitt gilt für **alle** Repos und für den lokalen Ordner `C:\Claude
 - **Jede Erkenntnis an genau einer Stelle.** Nicht mehrfach ablegen — stattdessen mit `[[Wikilinks]]` verweisen. Ausnahme ist dieser Struktur-Standard selbst, siehe Begründung oben.
 - **Wegwerf-Dateien von Anfang an in `_work\` anlegen**, nicht erst im Stammverzeichnis erzeugen und später aufräumen. Nach Abschluss einer Aufgabe dort aufräumen.
 - **Nach jeder abgeschlossenen Aufgabe** eigenständig prüfen, was sich dadurch geändert hat, und es an der inhaltlich richtigen Stelle ergänzen — ohne dass jemand danach fragen muss.
+- **Gehört die Erkenntnis in ein anderes Repo** (z.B. ein Code-Fix hier gehört als Nachtrag in `tv-memory`, oder eine private Erkenntnis gehört nach `noah-memory`) und ist dieses Repo in der aktuellen Session nicht verfügbar: nicht nur erwähnen oder für später vormerken, sondern das Repo aktiv dazuholen (z.B. per `add_repo`) und die Notiz sofort dort nachtragen. Eine Aufgabe gilt erst als abgeschlossen, wenn diese Nachpflege passiert ist — auch wenn die Session ursprünglich nur für ein einzelnes Repo gestartet wurde. Hintergrund: am 03.09.2026 blieb ein Fix in `tv-rheinzabern-auto` (PR #21) mehrere Tage unnachgetragen in `tv-memory`, weil die Session, die den Fix machte, das Memory-Repo nicht angefasst hat.
 - **Vor dem Verschieben von Dateien** prüfen, ob fest eingetragene Pfade darauf zeigen. Beim Aufräumen im Juli 2026 zeigten danach `.bat`-Dateien ins Leere.
 - **Nichts löschen.** Was wegsoll, wird nach `Alt\` verschoben.
 
