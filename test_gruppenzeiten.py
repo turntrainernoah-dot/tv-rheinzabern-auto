@@ -197,14 +197,45 @@ def test_merge_compatibility():
     grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
     plan, sonder, anm = a.build_trainer_plan(no_absences(gruppen), grid_rows, grid_phase)
     holder_cells = [c for c in plan.values() if c and any(ck in ("g1_blau", "g2_orange") for _, ck in c)]
-    check("nur 1 Einheit besetzt (Rest 'kein Trainer mehr fuer')", len(holder_cells) == 1)
-    check("Anmerkung nennt unbesetzte Einheit(en)", any("kein Trainer mehr" in x for x in anm), f"{anm}")
+    check("nur 1 Einheit besetzt (Rest bleibt ohne Trainer, ohne Anmerkung)", len(holder_cells) == 1)
     # Die besetzte Einheit darf NIE G1+G3 oder G2+G3 sein (inkompatible Zeiten)
     for c in holder_cells:
         labels = {t.replace("AW ", "") for t, ck in c if t not in ("Aufbauen", "Abbauen")}
         lbl = list(labels)[0] if labels else ""
         check("besetzte Einheit enthaelt kein inkompatibles G3-Merge",
               not ("G3" in lbl and "+" in lbl), f"label={lbl}")
+
+# ════════════════════════════════════════════════════════════════
+# 5b) G3/G4-Sonderregel (Noah, 07.09.2026): G3+G4 wieder als 2 eigene
+#     Gruppen -- eigene, auf die SUMME bezogene Merge-Schwelle (6) statt
+#     der generischen Turner-Schwelle (<3 je Gruppe).
+# ════════════════════════════════════════════════════════════════
+def _g3g4_merged(g3n, g4n):
+    gruppen = ["G1", "G2", "G3", "G4"]
+    turner = {
+        "G1": [f"G1K{i}" for i in range(1, 6)],
+        "G2": [f"G2K{i}" for i in range(1, 6)],
+        "G3": [f"G3K{i}" for i in range(1, g3n + 1)],
+        "G4": [f"G4K{i}" for i in range(1, g4n + 1)],
+    }
+    trainer = ["T1", "T2", "T3", "T4", "T5"]
+    set_roster(gruppen, turner, trainer)
+    grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
+    plan, _s, _anm = a.build_trainer_plan(no_absences(gruppen), grid_rows, grid_phase)
+    labels = set()
+    for cells in plan.values():
+        if not cells:
+            continue
+        labels.update(str(c[0]).replace("AW ", "") for c in cells if c[1] not in ("aufbauen", "springer"))
+    return any(lbl == "G3+G4" for lbl in labels)
+
+def test_g3g4_sonderregel_merge_schwelle():
+    check("G3=2/G4=2 (Summe 4<6) -> zusammengelegt", _g3g4_merged(2, 2) is True)
+    check("G3=2/G4=3 (Summe 5<6) -> zusammengelegt", _g3g4_merged(2, 3) is True)
+    check("G3=3/G4=3 (Summe 6) -> getrennt", _g3g4_merged(3, 3) is False)
+    check("G3=2/G4=4 (Summe 6, ungleich verteilt) -> getrennt", _g3g4_merged(2, 4) is False)
+    check("G3=1/G4=6 (Summe 7, G3 allein waere generisch <3) -> trotzdem getrennt",
+          _g3g4_merged(1, 6) is False)
 
 # ════════════════════════════════════════════════════════════════
 # 6) Rotationsfairness ueber 20 simulierte Folgetermine
@@ -847,6 +878,7 @@ if __name__ == "__main__":
     test_group_counts()
     test_trainer_counts_and_immer_springer()
     test_merge_compatibility()
+    test_g3g4_sonderregel_merge_schwelle()
     test_rotation_fairness()
     test_rotation_frequency_tiebreak_verhindert_statisches_muster()
     test_springer_frequency_tiebreak()

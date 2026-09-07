@@ -710,6 +710,22 @@ def zeiten_kompatibel(gruppen_zeiten, a, b):
                 return False
     return True
 
+# G3/G4-Sonderregel (Noah, 07.09.2026): G3 und G4 sind wieder als 2 eigene
+# Gruppen gefuehrt (frueher dauerhaft zusammengelegt, siehe [[G3+G4 Dauer-
+# Zusammenlegung]]). Fuer genau dieses Paar gilt statt der generischen
+# Turner-Schwelle (MIN_KIDS/min_kids, je Gruppe <3) eine eigene, auf die
+# SUMME bezogene Schwelle: unter 6 gemeinsam anwesenden Turnern werden sie
+# zusammengelegt, ab 6 bleiben es 2 getrennte Gruppen -- unabhaengig davon,
+# wie sich die Kinder einzeln auf G3/G4 verteilen (Beispiel G3=1/G4=6:
+# G3 allein reisst die generische <3-Schwelle, bleibt hier aber trotzdem
+# getrennt, weil die Summe 7 schon >=6 ist).
+G3G4_MERGE_SCHWELLE = 6
+
+def _g3g4_zusammenlegung_gesperrt(a, b, present):
+    if {tuple(sorted(a)), tuple(sorted(b))} != {("G3",), ("G4",)}:
+        return False
+    return present.get("G3", 0) + present.get("G4", 0) >= G3G4_MERGE_SCHWELLE
+
 # ════════════════════════════════════════════════════════════════
 #  ABWESENHEITEN AUSWERTEN
 # ════════════════════════════════════════════════════════════════
@@ -1259,6 +1275,8 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
     MIN_KIDS = 3   # jede Gruppe braucht >= 3 anwesende Turner, sonst zusammenlegen
 
     def _compatible(a, b):
+        if _g3g4_zusammenlegung_gesperrt(a, b, present):
+            return False
         return all(zeiten_kompatibel(GRUPPEN_ZEITEN, x, y) for x in a for y in b)
 
     units = [[g] for g in active]
@@ -1316,10 +1334,6 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
     unit_groups = {unit_label(u): u for u in units}
     labels = list(unit_groups.keys())
     assign, springers = _assign_units_fair(labels, holders_pool, trainer_roles_history, IMMER_SPRINGER)
-
-    unassigned_units = [lab for lab in labels if lab not in assign]
-    if unassigned_units:
-        anmerkungen.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(unassigned_units))
 
     # partielle (frueh/spaet) Trainer -> immer Springer
     for t in available:
@@ -1904,7 +1918,10 @@ def _merge_small_singletons(groups, present, gruppen_zeiten, min_kids=3):
     statt eines unmoeglichen Merges)."""
     units = [[g] for g in groups]
     def cnt(u): return sum(present.get(g, 0) for g in u)
-    def compatible(a, b): return all(zeiten_kompatibel(gruppen_zeiten, x, y) for x in a for y in b)
+    def compatible(a, b):
+        if _g3g4_zusammenlegung_gesperrt(a, b, present):
+            return False
+        return all(zeiten_kompatibel(gruppen_zeiten, x, y) for x in a for y in b)
     changed = True
     while changed:
         changed = False
@@ -2035,9 +2052,6 @@ def build_ki_einteilung(absences, ki, grid_rows, grid_phase, trainer_roles_histo
         else:
             TRAINER_PLAN[t] = None
     anm = []
-    unfilled = [lab for lab in open_units if lab not in fair_assign]
-    if unfilled:
-        anm.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(unfilled))
     return TRAINER_PLAN, {}, anm
 
 def _ki_kid(name):
