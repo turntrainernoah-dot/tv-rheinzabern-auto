@@ -1268,8 +1268,25 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
     #    einzeln (Notlage-Fallback statt eines unmoeglichen Merges).
     def _merge_undersized():
         for i, u in enumerate(units):
+            cands = [j for j in (i - 1, i + 1) if 0 <= j < len(units) and _compatible(units[i], units[j])]
+
+            # Sonderregel G3+G4 (Noah, 09.09.2026): dieses Paar wird NICHT
+            # nach der generischen Einzelgruppen-Mindestgroesse (MIN_KIDS)
+            # zusammengelegt, sondern nur wenn die SUMME beider Gruppen < 6
+            # anwesende Turner ist. Vorher loeste schon eine einzelne Gruppe
+            # <3 (z.B. G4=2) den Merge aus, obwohl die andere Gruppe (z.B.
+            # G3=5) allein schon gut besetzt war -- Summe 5+2=7 wird ab jetzt
+            # NICHT mehr zusammengelegt.
+            g3g4 = next((j for j in cands if set(u) | set(units[j]) == {"G3", "G4"}), None)
+            if g3g4 is not None:
+                if present.get("G3", 0) + present.get("G4", 0) < 6:
+                    lo, hi = sorted((i, g3g4))
+                    units[lo] = units[lo] + units[hi]
+                    del units[hi]
+                    return True
+                cands = [j for j in cands if j != g3g4]
+
             if sum(present[g] for g in u) < MIN_KIDS and len(units) > 1:
-                cands = [j for j in (i - 1, i + 1) if 0 <= j < len(units) and _compatible(units[i], units[j])]
                 if not cands:
                     continue
                 best = min(cands, key=lambda j: sum(present[g] for g in units[i]) + sum(present[g] for g in units[j]))
@@ -1909,8 +1926,22 @@ def _merge_small_singletons(groups, present, gruppen_zeiten, min_kids=3):
     while changed:
         changed = False
         for i, u in enumerate(units):
+            cands = [j for j in (i - 1, i + 1) if 0 <= j < len(units) and compatible(u, units[j])]
+
+            # Sonderregel G3+G4 (Noah, 09.09.2026): siehe _merge_undersized()
+            # in build_trainer_plan() -- dieselbe Regel gilt auch fuer den
+            # KI-Anweisungs-Pfad (Gruppen ohne explizite Anmerkung): nur
+            # zusammenlegen wenn die SUMME beider Gruppen < 6 ist, nicht
+            # schon wenn eine der beiden allein < min_kids ist.
+            g3g4 = next((j for j in cands if set(u) | set(units[j]) == {"G3", "G4"}), None)
+            if g3g4 is not None:
+                if present.get("G3", 0) + present.get("G4", 0) < 6:
+                    lo, hi = sorted((i, g3g4))
+                    units[lo] = units[lo] + units[hi]; del units[hi]
+                    changed = True; break
+                cands = [j for j in cands if j != g3g4]
+
             if cnt(u) < min_kids and len(units) > 1:
-                cands = [j for j in (i - 1, i + 1) if 0 <= j < len(units) and compatible(u, units[j])]
                 if not cands:
                     continue
                 best = min(cands, key=lambda j: cnt(units[j]) + cnt(u))
