@@ -210,8 +210,19 @@ _WOCHENTAGE_CHAT = {
     "freitag": 4, "samstag": 5, "sonntag": 6,
 }
 
-_MSG_START_RE = re.compile(
+# Bugfix (Noah, 09.09.2026): WhatsApp exportiert den Zeitstempel je nach
+# Geraet/Locale in UNTERSCHIEDLICHER Reihenfolge -- "[TT.MM.JJ, HH:MM]"
+# (Datum zuerst) ODER "[HH:MM, TT.MM.JJJJ]" (Zeit zuerst). Der deterministische
+# Parser (ab 03.09.2026) akzeptierte bisher NUR die Datum-zuerst-Form --
+# Noahs echter Chat-Export nutzt aber durchgehend Zeit-zuerst ("[14:04,
+# 5.9.2026] ..."), wodurch KEINE einzige Zeile erkannt wurde (0 Eintraege).
+# Beide Formen werden jetzt akzeptiert, damit es unabhaengig vom
+# Export-Geraet funktioniert.
+_MSG_START_RE_DATUM_ZUERST = re.compile(
     r"^\[\s*(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s*,\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*\]\s*([^:]+?):\s*(.*)$"
+)
+_MSG_START_RE_ZEIT_ZUERST = re.compile(
+    r"^\[\s*(\d{1,2}):(\d{2})(?::\d{2})?\s*,\s*(\d{1,2})\.(\d{1,2})\.(\d{2,4})\s*\]\s*([^:]+?):\s*(.*)$"
 )
 _GESTERN_RE = re.compile(
     r"f[uü]r\s+gestern|nachtr[aä]glich|war\s+gestern\s+auch\s+da|\bgestern\b", re.I)
@@ -222,6 +233,21 @@ _WEEKDAY_RE = re.compile(
     r"\b(?:am\s+)?(montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag)\b", re.I)
 
 
+def _match_msg_start(line):
+    """Matcht eine Zeitstempel-Zeile in BEIDEN moeglichen Reihenfolgen
+    (Datum-zuerst oder Zeit-zuerst, siehe Bugfix-Kommentar oben) und gibt
+    einheitlich (day, mon, yr, hh, mi, sender, body) zurueck, oder None."""
+    m = _MSG_START_RE_DATUM_ZUERST.match(line)
+    if m:
+        day, mon, yr, hh, mi, sender, body = m.groups()
+        return day, mon, yr, hh, mi, sender, body
+    m = _MSG_START_RE_ZEIT_ZUERST.match(line)
+    if m:
+        hh, mi, day, mon, yr, sender, body = m.groups()
+        return day, mon, yr, hh, mi, sender, body
+    return None
+
+
 def _split_chat_messages(raw_chat):
     """Zerlegt den rohen WhatsApp-Export in Nachrichten {date, sender, body}.
     Mehrzeilige Nachrichten (kein neuer Zeitstempel) werden an die vorherige
@@ -230,11 +256,11 @@ def _split_chat_messages(raw_chat):
     cur = None
     for raw_line in raw_chat.splitlines():
         line = raw_line.strip()
-        m = _MSG_START_RE.match(line)
-        if m:
+        matched = _match_msg_start(line)
+        if matched:
             if cur:
                 messages.append(cur)
-            day, mon, yr, hh, mi, sender, body = m.groups()
+            day, mon, yr, hh, mi, sender, body = matched
             yr = int(yr)
             if yr < 100:
                 yr += 2000
