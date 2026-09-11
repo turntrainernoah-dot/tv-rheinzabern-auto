@@ -1298,23 +1298,26 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
     while _merge_undersized():
         pass
 
-    # 2) Nicht mehr Einheiten als Vollzeit-Halter -> weiter zusammenlegen
-    #    (kleinste zeit-kompatible Paarung zuerst). Gibt es keinen
-    #    kompatiblen Merge-Partner mehr, bleiben ueberzaehlige Einheiten
-    #    einzeln (Notlage) -- werden dann unten als unbesetzt markiert.
+    # 2) Nicht mehr Einheiten als Halter -> weiter zusammenlegen (kleinste
+    #    zeit-kompatible Paarung zuerst). Gibt es keinen kompatiblen Merge-
+    #    Partner mehr, bleiben ueberzaehlige Einheiten einzeln (Notlage) --
+    #    werden dann unten als unbesetzt markiert.
     #
-    #    Bugfix 30.08.2026 (Noah: ein als "immer nur Springer" markierter Trainer
-    #    bekam trotzdem regelmaessig eine Gruppe): Ziel war bisher len(holders_pool)
-    #    -- ALLE verfuegbaren Trainer inkl. immer_springer. Das merged nur so weit
-    #    wie fuer die reine Kopfzahl noetig, nicht so weit wie fuer die Kopfzahl OHNE
-    #    immer_springer-Trainer noetig waere -- _assign_units_fair() musste dadurch
-    #    haeufiger als eigentlich noetig auf den immer_springer-Trainer zurueckgreifen.
-    #    Jetzt wird zuerst versucht, so weit zusammenzulegen, dass die normalen
-    #    (nicht immer_springer) Trainer allein ausreichen; nur wenn dafuer kein
-    #    kompatibler Merge-Partner mehr existiert, greift wie gehabt der
-    #    Notlage-Fallback in _assign_units_fair() (immer_springer wird doch gezogen).
-    _normal_holders = [t for t in holders_pool if t not in IMMER_SPRINGER]
-    _merge_target = len(_normal_holders) if _normal_holders else len(holders_pool)
+    #    Bugfix 11.09.2026 (Noah: "Andy ist Dauerspringer und trotzdem wird
+    #    G3+G4 zusammengelegt"): Zwischen 30.08. und 11.09.2026 zaehlte hier
+    #    nur len(_normal_holders) -- immer_springer-Trainer wurden aus der
+    #    Kopfzahl komplett rausgerechnet. Dadurch wurde bei Trainermangel
+    #    IMMER zuerst zusammengelegt, bevor _assign_units_fair() ueberhaupt
+    #    die Chance bekam, den Dauerspringer als Halter zu ziehen (der wird
+    #    dort ohnehin nur gezogen, wenn normale Trainer alleine nicht fuer
+    #    alle Einheiten reichen, siehe dortiger "Notlage-Fallback"). Damit
+    #    lief die Reihenfolge faktisch verkehrt: Gruppen wurden zusammengelegt,
+    #    OBWOHL noch ein Dauerspringer frei war, der die Einheit haette
+    #    halten koennen. Jetzt zaehlt wieder die volle Kopfzahl (inkl.
+    #    immer_springer) als Merge-Ziel -- der Dauerspringer wird also ERST
+    #    als Halter eingesetzt, und nur wenn selbst das nicht reicht (mehr
+    #    Einheiten als Trainer insgesamt), wird weiter zusammengelegt.
+    _merge_target = len(holders_pool)
     while len(units) > max(1, _merge_target):
         best = None
         for i in range(len(units)):
