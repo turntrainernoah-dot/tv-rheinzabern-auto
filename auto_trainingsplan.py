@@ -1337,7 +1337,14 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
     labels = list(unit_groups.keys())
     assign, springers = _assign_units_fair(labels, holders_pool, trainer_roles_history, IMMER_SPRINGER)
 
-    unassigned_units = [lab for lab in labels if lab not in assign]
+    # Bugfix 11.09.2026 (Noah: "es kommt immer noch die Anmerkung 'zu wenig
+    # Trainer', obwohl alle Einheiten besetzt sind"): assign ist {Trainer:
+    # Einheit}, nicht {Einheit: Trainer} -- "lab not in assign" prueft also
+    # eine Gruppen-Bezeichnung ("G3") gegen Trainer-Namen als Dict-Keys und
+    # ist damit praktisch IMMER wahr, unabhaengig vom tatsaechlichen
+    # Zuteilungs-Ergebnis. Richtig ist der Abgleich gegen die vergebenen
+    # Einheiten (assign.values()).
+    unassigned_units = [lab for lab in labels if lab not in assign.values()]
     if unassigned_units:
         anmerkungen.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(unassigned_units))
 
@@ -2069,7 +2076,10 @@ def build_ki_einteilung(absences, ki, grid_rows, grid_phase, trainer_roles_histo
         else:
             TRAINER_PLAN[t] = None
     anm = []
-    unfilled = [lab for lab in open_units if lab not in fair_assign]
+    # Bugfix 11.09.2026, siehe build_trainer_plan(): fair_assign ist
+    # {Trainer: Einheit}, Abgleich muss gegen die vergebenen Einheiten
+    # (fair_assign.values()) laufen, nicht gegen die Trainer-Namen als Keys.
+    unfilled = [lab for lab in open_units if lab not in fair_assign.values()]
     if unfilled:
         anm.append("ACHTUNG: kein Trainer mehr fuer: " + ", ".join(unfilled))
     return TRAINER_PLAN, {}, anm
