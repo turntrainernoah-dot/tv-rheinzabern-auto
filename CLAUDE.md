@@ -17,6 +17,17 @@ Die Workflows in diesem Repo sind keine Spielerei, sondern laufender Betrieb: Tr
 - `fonts/`, `state_backups/`: Hilfsdateien bzw. Zustandssicherungen der Automatik.
 - Zugangsdaten (SSH, Gmail) liegen ausschließlich als GitHub Secrets, nie im Code — siehe `README.md`.
 
+## Benachrichtigungen (Stand 12.09.2026)
+
+`send_whatsapp()` (auto_trainingsplan.py) schickt bei jedem Aufruf zuerst eine E-Mail
+(`send_email()`) — das ist der tatsächlich genutzte Kanal. Der zusätzliche WhatsApp-Versand
+über CallMeBot (`WHATSAPP_PHONE`/`CALLMEBOT_APIKEY`) wird **nicht mehr benutzt** — CallMeBot
+ist kostenpflichtig geworden und funktioniert mit dem alten kostenlosen Zugang nicht mehr.
+Der Code bricht dabei nicht ab (Try/Except, fällt ohne gesetzte Secrets auf einen reinen
+Log-Eintrag `[WA-TEST]` zurück) — die E-Mail-Benachrichtigung läuft unabhängig davon normal
+weiter. Genau dasselbe Muster wie beim GitHub-Models-Ausfall: ein kostenloser Drittanbieter
+kann jederzeit wegfallen/kostenpflichtig werden, ohne dass das restliche System betroffen ist.
+
 
 ---
 
