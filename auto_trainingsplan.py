@@ -383,6 +383,35 @@ def read_fixed_entries(sftp):
     except Exception:
         return {}
 
+def write_fixed_entries_atomic(sftp, fixed_entries):
+    """Schreibt fixed_entries.json atomar (Temp-Datei + rename) statt direkt in
+    die Zieldatei. Bugfix 12.09.2026 (Noah, im Zuge der Sicherheitsfrage zum
+    KI-Chat in tv-trainerportal): ein direktes sftp.open(...,'wb') + write
+    ueberschreibt die Datei in-place -- bricht die SFTP-Verbindung waehrend
+    des Schreibens ab, bleibt eine abgeschnittene/kaputte JSON-Datei stehen.
+    read_fixed_entries() faengt ungueltiges JSON zwar ab, behandelt es dann
+    aber als 'keine Overrides fuer IRGENDein Datum' -- ein Absturz mitten im
+    Schreiben wuerde damit ALLE gesperrten Trainerplaene fuer ALLE Tage
+    stillschweigend ausser Kraft setzen, nicht nur den gerade bearbeiteten.
+    posix_rename() (SFTP-Erweiterung, von OpenSSH-basierten Servern wie hier
+    unterstuetzt) ersetzt die Zieldatei atomar; ist sie nicht verfuegbar,
+    faellt dies auf remove+rename zurueck (kein Atomar-Garant mehr, aber
+    zumindest ist die eigentliche Schreibarbeit zu diesem Zeitpunkt schon
+    abgeschlossen, ein Absturz kann die Zieldatei dann nicht mehr kaputt
+    schreiben -- schlimmstenfalls bleibt der alte, gueltige Stand liegen)."""
+    tmp = f"fixed_entries.json.tmp{os.getpid()}"
+    f = sftp.open(tmp, "wb")
+    f.write(json.dumps(fixed_entries, indent=2, ensure_ascii=False).encode("utf-8"))
+    f.close()
+    try:
+        sftp.posix_rename(tmp, "fixed_entries.json")
+    except (AttributeError, IOError, OSError):
+        try:
+            sftp.remove("fixed_entries.json")
+        except FileNotFoundError:
+            pass
+        sftp.rename(tmp, "fixed_entries.json")
+
 def apply_fixed_absences(absences, fixed_entry):
     """Merged fixed_absences in die berechneten Abwesenheiten (addiert, entfernt nichts)."""
     for gruppe, namen in fixed_entry.get("fixed_absences", {}).items():
@@ -812,7 +841,7 @@ def timing_annotations(trainer_timing):
         lines.append(f"• {head}: {notiz}" if notiz else f"• {head}")
     return lines
 
-def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
+def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude, prefer=None):
     """Freien Trainer fuer 'slot' finden: erst Springer, dann Auf-/Abbau.
     Wer in diesem Slot selbst spaet/frueh geblockt ist, scheidet aus.
     Bugfix 31.08.2026 (Noah: "der Dauerspringer soll so lange wie moeglich
@@ -821,10 +850,25 @@ def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
     bevorzugt zur Vertretung eingesetzt, damit ein immer_springer-Trainer
     (z.B. Andy) auch beim Einspringen fuer einen teil-abwesenden Kollegen
     moeglichst als "Springer" sichtbar bleibt. Nur wenn kein anderer freier
-    Springer da ist, uebernimmt er selbst (letzte Instanz)."""
+    Springer da ist, uebernimmt er selbst (letzte Instanz).
+    Bugfix 12.09.2026 (Noah: "Cassi vertritt zwei Zeilen lang, dann macht
+    plotzlich Noah eine weitere Zeile derselben Vertretung, obwohl Cassi
+    noch frei gewesen waere"): `prefer` ist der Trainer, der die VORHERIGE
+    geblockte Zeile derselben Abwesenheit bereits uebernommen hat. War er
+    schon vorher frei, bleibt er es i.d.R. auch fuer die naechste Zeile --
+    ohne diese Praeferenz gewann hier einfach die Config-Reihenfolge der
+    Trainer (ALLE_TRAINER), was eine Vertretung mitten drin unbegruendet an
+    einen anderen Trainer weiterreichte. `prefer` wird nur genutzt, wenn er
+    selbst noch ein gueltiger Kandidat waere (nicht an dieser Stelle
+    geblockt, Zelle noch springer/aufbauen) -- sonst faellt es normal auf
+    die bisherige Logik zurueck."""
     def blocked_at(t):
         info = trainer_timing.get(t)
         return bool(info) and slot in info.get("blocked", [])
+    if prefer and prefer != exclude:
+        plan = trainer_plan.get(prefer)
+        if plan and slot < len(plan) and not blocked_at(prefer) and plan[slot][1] in ("springer", "aufbauen"):
+            return prefer
     for want in ("springer", "aufbauen"):
         candidates = []
         for t, plan in trainer_plan.items():
@@ -844,7 +888,10 @@ def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude):
 def apply_timing_coverage(trainer_plan, trainer_timing):
     """Vertretung: geht ein Trainer frueher / kommt spaeter, uebernimmt fuer die
     fehlenden Slots ein freier Trainer (bevorzugt der Springer) dessen Gruppe.
-    MUSS VOR apply_timing_blocks laufen (liest die Original-Gruppenzelle)."""
+    MUSS VOR apply_timing_blocks laufen (liest die Original-Gruppenzelle).
+    Bugfix 12.09.2026: derselbe Vertreter wird ueber mehrere Zeilen derselben
+    Abwesenheit hinweg beibehalten, statt pro Zeile neu (und dabei zufaellig
+    an einen anderen Trainer) zu vergeben -- siehe _find_free_coverer()."""
     if not trainer_timing:
         return trainer_plan
     GRUPPEN_COLORS = {"aufwaermen", "g1_blau", "g2_orange"}
@@ -852,15 +899,17 @@ def apply_timing_coverage(trainer_plan, trainer_timing):
         plan = trainer_plan.get(name)
         if not plan:
             continue
+        preferred_coverer = None
         for i in sorted(info.get("blocked", [])):
             if not (0 <= i < len(plan)):
                 continue
             text, ck = plan[i]
             if ck not in GRUPPEN_COLORS:
                 continue
-            coverer = _find_free_coverer(trainer_plan, trainer_timing, i, exclude=name)
+            coverer = _find_free_coverer(trainer_plan, trainer_timing, i, exclude=name, prefer=preferred_coverer)
             if coverer:
                 p = list(trainer_plan[coverer]); p[i] = (text, ck); trainer_plan[coverer] = p
+                preferred_coverer = coverer
     return trainer_plan
 
 
@@ -2398,9 +2447,7 @@ def preprocess_deterministic_annotations(sftp, anmerkungen_server, fixed_entries
             pass
     if changed:
         try:
-            f = sftp.open("fixed_entries.json", "wb")
-            f.write(json.dumps(fixed_entries, indent=2, ensure_ascii=False).encode("utf-8"))
-            f.close()
+            write_fixed_entries_atomic(sftp, fixed_entries)
             print("[CMD] fixed_entries.json aktualisiert.")
         except Exception as e:
             print(f"[CMD] fixed_entries Upload fehlgeschlagen: {e}")
@@ -2536,9 +2583,7 @@ def ki_process_annotations(sftp, anmerkungen_server, fixed_entries, state):
             print(f"[KI] Anwenden fehlgeschlagen: {e}")
     if changed:
         try:
-            f = sftp.open("fixed_entries.json", "wb")
-            f.write(json.dumps(fixed_entries, indent=2, ensure_ascii=False).encode("utf-8"))
-            f.close()
+            write_fixed_entries_atomic(sftp, fixed_entries)
             print("[KI] fixed_entries.json aktualisiert.")
         except Exception as e:
             print(f"[KI] fixed_entries Upload fehlgeschlagen: {e}")
