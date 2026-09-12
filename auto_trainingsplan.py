@@ -2637,6 +2637,8 @@ def main():
         print(f"[DEBUG] GRUPPEN_ORDER: {GRUPPEN_ORDER}")
         print(f"[DEBUG] GRUPPEN_TAUSCH: {sorted(GRUPPEN_TAUSCH)}")
         print(f"[DEBUG] Datum: {datum_kurz} ({wtag})")
+        print(f"[DEBUG] grid_rows (Start/Ende in Minuten seit 0:00): {grid_rows}")
+        print(f"[DEBUG] grid_phase je Gruppe: {grid_phase}")
         print(f"[DEBUG] Abwesenheiten: {absences}")
         _dbg_hist = _load_trainer_roles_history(state, exclude_date=datum_kurz)
         print(f"[DEBUG] trainer_roles_history (letzte 6 Termine je Trainer): {_dbg_hist}")
