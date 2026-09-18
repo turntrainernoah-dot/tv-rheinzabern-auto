@@ -1041,6 +1041,8 @@ def _cells_for_unit(label, groups, grid_rows, grid_phase):
             cells.append((label, farbe_fuer_phase(_effektive_phase(ref, phase))))
         elif first_active is not None and i > last_active:
             cells.append(("Abbauen", "aufbauen"))
+        elif first_active is not None and 0 < i < first_active:
+            cells.append(("Springer", "springer"))
         else:
             cells.append(("Aufbauen", "aufbauen"))
     return cells
