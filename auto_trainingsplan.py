@@ -962,7 +962,76 @@ def apply_timing_coverage(trainer_plan, trainer_timing):
             if coverer:
                 p = list(trainer_plan[coverer]); p[i] = (text, ck); trainer_plan[coverer] = p
                 preferred_coverer = coverer
+                continue
+            # Kein freier Trainer mehr (Noah, 23.09.2026: "geht Fabian, hat
+            # keiner G3 -> bei zu wenig Trainern 2 Gruppen zusammenlegen, z.B.
+            # G3+G4"): die Gruppe mit einer gerade laufenden, zeit-
+            # kompatiblen Gruppe (gleiche Phase in dieser Zeile) zusammenlegen.
+            partner = _find_merge_partner(trainer_plan, trainer_timing, i, name, text, ck,
+                                          prefer=preferred_coverer)
+            if partner:
+                p = list(trainer_plan[partner])
+                p[i] = (_merge_cell_text(p[i][0], text), ck)
+                trainer_plan[partner] = p
+                preferred_coverer = partner
+                print(f"[COVER] Zeile {i}: kein freier Trainer -> {p[i][0]} zusammengelegt.")
+            else:
+                print(f"[COVER-WARN] Zeile {i}: {text} ohne Trainer, kein Merge-Partner gefunden.")
     return trainer_plan
+
+
+# Bevorzugte Zusammenlegungs-Partner (Noah: z.B. G3+G4), danach Nachbargruppen.
+_MERGE_PARTNER_PRAEFERENZ = {"G1": "G2", "G2": "G1", "G3": "G4", "G4": "G3"}
+
+
+def _cell_groups(text):
+    t = (text or "").strip()
+    if t.startswith("AW "):
+        t = t[3:]
+    return [g.strip() for g in t.split("+") if g.strip()]
+
+
+def _merge_cell_text(own, extra):
+    aw = own.startswith("AW ") or extra.startswith("AW ")
+    groups = []
+    for g in _cell_groups(own) + _cell_groups(extra):
+        if g not in groups:
+            groups.append(g)
+    order = {g: k for k, g in enumerate(GRUPPEN_ORDER)}
+    groups.sort(key=lambda g: order.get(g, 99))
+    return ("AW " if aw else "") + unit_label(groups)
+
+
+def _find_merge_partner(trainer_plan, trainer_timing, slot, exclude, text, ck, prefer=None):
+    """Trainer, der in 'slot' eine Gruppe mit derselben Phase/Farbe (ck) haelt
+    (= gleiches Geraet zur selben Zeit). Reihenfolge:
+    bisheriger Partner, feste Paare (G3<->G4, G1<->G2), dann Nachbargruppe."""
+    verwaist = _cell_groups(text)
+    if not verwaist:
+        return None
+    order = {g: k for k, g in enumerate(GRUPPEN_ORDER)}
+    cands = []
+    for t, plan in trainer_plan.items():
+        if t == exclude or not plan or slot >= len(plan):
+            continue
+        info = trainer_timing.get(t)
+        if info and slot in info.get("blocked", []):
+            continue
+        ctext, cck = plan[slot]
+        if cck != ck:
+            continue
+        cgroups = _cell_groups(ctext)
+        if not cgroups or set(cgroups) & set(verwaist):
+            continue
+        # Gleiche Phase/Farbe in dieser Zeile = gleiches Geraet -> machbar.
+        # Komplett zeit-kompatible Gruppen werden nur bevorzugt.
+        kompatibel = all(zeiten_kompatibel(GRUPPEN_ZEITEN, a, b) for a in verwaist for b in cgroups)
+        praef = any(_MERGE_PARTNER_PRAEFERENZ.get(g) in cgroups for g in verwaist)
+        dist = min(abs(order.get(a, 99) - order.get(b, 99)) for a in verwaist for b in cgroups)
+        cands.append((0 if t == prefer else 1, 0 if praef else 1, 0 if kompatibel else 1, dist, len(cgroups), t))
+    if not cands:
+        return None
+    return min(cands)[-1]
 
 
 def apply_timing_blocks(trainer_plan, trainer_timing):
