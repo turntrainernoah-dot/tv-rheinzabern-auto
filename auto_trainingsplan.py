@@ -974,9 +974,14 @@ def apply_timing_coverage(trainer_plan, trainer_timing):
                 p[i] = (_merge_cell_text(p[i][0], text), ck)
                 trainer_plan[partner] = p
                 preferred_coverer = partner
-                print(f"[COVER] Zeile {i}: kein freier Trainer -> {p[i][0]} zusammengelegt.")
+                print(f"[COVER] Zeile {i}: {text} ohne freien Trainer -> {p[i][0]} zusammengelegt.")
             else:
                 print(f"[COVER-WARN] Zeile {i}: {text} ohne Trainer, kein Merge-Partner gefunden.")
+    # Anonyme Uebersicht (oeffentliches Repo -> keine Namen im Log)
+    for k, (t, plan) in enumerate(trainer_plan.items(), 1):
+        if plan:
+            print(f"[COVER] T{k}{' (teil)' if t in trainer_timing else ''}: "
+                  + " | ".join(c[0].replace(chr(10), ' ') for c in plan))
     return trainer_plan
 
 
