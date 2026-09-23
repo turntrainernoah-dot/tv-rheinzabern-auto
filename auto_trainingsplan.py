@@ -14,6 +14,7 @@ Ablauf:
 """
 
 import json, hashlib, os, re, sys, tempfile, shutil, subprocess, itertools, urllib.request, urllib.parse
+import difflib
 from datetime import date, timedelta, datetime, timezone
 
 import paramiko
@@ -2471,6 +2472,54 @@ def _norm_group_label(lab):
         return out[0]
     return "+".join(sorted(out, key=lambda g: GRUPPEN_ORDER.index(g)))
 
+# Geraete-Anweisung in einer Anmerkung (Noah, 23.09.2026: "Reck und Sprung"
+# wurde nicht erkannt, weil nur die -- inzwischen abgeschaltete -- KI Geraete
+# verstand). Erkennt eine Zeile, die GENAU eine Geraete-Kombi nennt und sonst
+# nur Fuellwoerter enthaelt, z.B. "Reck und Sprung", "heute Sprung/Reck",
+# "Wir turnen Boden + Barren", "Geräte: Seitpferd, Ringe", "Sprung und Reck
+# statt Boden und Barren".
+_GERAET_ALIAS = {
+    "boden": "Boden", "barren": "Barren", "sprung": "Sprung", "reck": "Reck",
+    "seitpferd": "Seitpferd", "pauschenpferd": "Seitpferd", "pferd": "Seitpferd",
+    "ringe": "Ringe", "ring": "Ringe",
+}
+_GERAET_FUELL = {
+    "heute", "morgen", "bitte", "wir", "turnen", "machen", "mache", "macht", "an",
+    "am", "die", "der", "das", "geräte", "geraete", "gerät", "geraet", "und", "u",
+    "mit", "es", "gibt", "sollen", "soll", "kommt", "kommen", "dran", "training",
+    "beim", "im", "nächstes", "naechstes", "mal", "diesmal", "ich", "will",
+    "möchte", "moechte", "gerne", "lieber", "nur", "auf", "plan", "trainingsplan",
+    "mittwoch", "freitag", "mi", "fr", "als", "in", "zu", "ist", "sind", "sollte",
+    "bitteschön", "danke", "ok", "okay", "also", "einfach", "einmal",
+}
+
+
+def _parse_geraete_line(s):
+    txt = s.lower()
+    # "X statt/anstatt/nicht Y" -> nur der Teil VOR dem Schluesselwort zaehlt
+    txt = re.split(r'\b(?:statt|anstatt|nicht|kein|keine|anstelle)\b', txt)[0]
+    words = re.findall(r'[a-zäöüß]+', txt)
+    if not words:
+        return None
+    found = []
+    for w in words:
+        if w not in _GERAET_ALIAS and w not in _GERAET_FUELL and len(w) >= 4:
+            # Tippfehler tolerieren ("Rech" -> Reck, "Barrn" -> Barren)
+            near = difflib.get_close_matches(w, list(_GERAET_ALIAS), n=1, cutoff=0.75)
+            if near:
+                w = near[0]
+        if w in _GERAET_ALIAS:
+            g = _GERAET_ALIAS[w]
+            if g not in found:
+                found.append(g)
+        elif w not in _GERAET_FUELL:
+            return None
+    for r1, r2 in GERAETE_ROTATION:
+        if set(found) == {r1, r2}:
+            return {"typ": "geraete", "g1": r1, "g2": r2}
+    return None
+
+
 def _parse_command_line(line):
     """Versucht, EINE Anmerkungs-Zeile als bekanntes Kommando zu erkennen.
     Gibt ein dict {typ, ...} zurueck oder None."""
@@ -2479,6 +2528,9 @@ def _parse_command_line(line):
         return None
     if _RE_RESET.match(s):
         return {"typ": "reset"}
+    ger = _parse_geraete_line(s)
+    if ger:
+        return ger
     re_role = _re_trainer_role()
     m = re_role.match(s) if re_role else None
     if m:
@@ -2582,6 +2634,9 @@ def _apply_command(cmd, fe):
         for t in ALLE_TURNER.get(g, []):
             if t not in fa[g]:
                 fa[g].append(t)
+    elif typ == "geraete":
+        fe["geraet_1"] = cmd["g1"]
+        fe["geraet_2"] = cmd["g2"]
     elif typ == "trainer_abwesend":
         fa = fe.setdefault("fixed_absences", {})
         fa.setdefault("Trainer", [])
@@ -2619,22 +2674,46 @@ def preprocess_deterministic_annotations(sftp, anmerkungen_server, fixed_entries
         lines = [ln for ln in notiz.splitlines() if ln.strip()]
         if not lines:
             continue
+        # Zeilen, die als Ganzes kein Kommando sind, zusaetzlich in Satzteile
+        # zerlegen ("Sprung und Reck, Kinder bitte Hallenschuhe mitbringen").
+        _split = []
+        for ln in lines:
+            if _parse_command_line(ln) is None:
+                parts = [x.strip() for x in re.split(r'[;]|(?<=[,!?])\s+|(?<=[a-zA-ZäöüÄÖÜß]\.)\s+', ln) if x.strip()]
+                if len(parts) > 1 and any(_parse_command_line(x) for x in parts):
+                    _split.extend(parts)
+                    continue
+            _split.append(ln)
+        lines = _split
         parsed = [_parse_command_line(ln) for ln in lines]
-        if any(p is None for p in parsed):
-            continue  # gemischt -> lieber der KI ueberlassen
-        # Alle Zeilen sind Kommandos -> anwenden
+        if all(p is None for p in parsed):
+            continue  # gar kein Kommando -> KI / normaler Anmerkungs-Pfad
+        # Mindestens eine Zeile ist ein Kommando -> anwenden. Gemischte
+        # Anmerkungen wurden frueher komplett der KI ueberlassen; seit der
+        # GitHub-Models-Abschaltung (30.07.2026) verpuffte so jede Anweisung
+        # (Noah, 23.09.2026). Nicht erkannte Zeilen werden als Hinweistext
+        # uebernommen, damit nichts verloren geht.
         fe = fixed_entries.setdefault(dk, {})
-        for p in parsed:
-            _apply_command(p, fe)
+        rest_lines = []
+        for ln, p in zip(lines, parsed):
+            if p is None:
+                rest_lines.append(ln.strip())
+            else:
+                _apply_command(p, fe)
         # Nach reset() kann fe leer sein -> Eintrag komplett verwerfen
         if not fe:
             fixed_entries.pop(dk, None)
         changed = True
+        writer = a.get("trainer", "?")
+        print(f"[CMD] '{notiz[:60]}' ({writer}) -> {dk}  {[p['typ'] if p else 'text' for p in parsed]}")
+        if rest_lines:
+            # Rest bleibt eine normale Trainer-Anmerkung ("• Trainer: Text") und
+            # wird nach dem Planbau wie jede andere als gelesen markiert.
+            a["notiz"] = "\n".join(rest_lines)
+            continue
         consumed.append(a)
         if a.get("id"):
             processed_ids.append(a["id"])
-        writer = a.get("trainer", "?")
-        print(f"[CMD] '{notiz[:60]}' ({writer}) -> {dk}  {[p['typ'] for p in parsed]}")
     for a in consumed:
         try:
             anmerkungen_server.remove(a)
@@ -2890,6 +2969,21 @@ def main():
     except Exception as _kie:
         print(f"[KI] uebersprungen: {_kie}")
 
+    # Geraete-Override (workflow_dispatch "geraete") dauerhaft in fixed_entries
+    # festhalten -- sonst ginge er bei der naechsten Admin-/Anmerkungs-
+    # Regenerierung wieder verloren (passiert am 23.09.2026).
+    if GERAETE_OVERRIDE:
+        _og1, _og2 = _apply_geraete_override(None, None, training_date)
+        if _og1 and _og2:
+            _fe = fixed_entries.setdefault(datum_kurz, {})
+            if (_fe.get("geraet_1"), _fe.get("geraet_2")) != (_og1, _og2):
+                _fe["geraet_1"], _fe["geraet_2"] = _og1, _og2
+                try:
+                    write_fixed_entries_atomic(sftp, fixed_entries)
+                    print(f"[OVERRIDE] {_og1}+{_og2} in fixed_entries[{datum_kurz}] gespeichert.")
+                except Exception as _owe:
+                    print(f"[OVERRIDE] fixed_entries nicht gespeichert: {_owe}")
+
     # Fixed entries anwenden (erzwingt Abwesenheiten, die das Auto-System nicht ändern darf)
     fixed_for_date = fixed_entries.get(datum_kurz, {})
     lock_trainer   = fixed_for_date.get("lock_trainer_plan", False)
@@ -3072,6 +3166,10 @@ def main():
         geraet_1     = plan_data["geraet_1"]
         geraet_2     = plan_data["geraet_2"]
         geraet_1, geraet_2 = _apply_geraete_override(geraet_1, geraet_2, training_date)
+        # Fest vorgegebene Geraete (Admin, Anmerkung, Override) haben immer Vorrang
+        if fixed_for_date.get("geraet_1") and fixed_for_date.get("geraet_2"):
+            geraet_1, geraet_2 = fixed_for_date["geraet_1"], fixed_for_date["geraet_2"]
+            print(f"[FIXED] Geräte aus fixed_entries: {geraet_1} + {geraet_2}")
         plan_data["geraet_1"], plan_data["geraet_2"] = geraet_1, geraet_2
 
         issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
@@ -3237,8 +3335,8 @@ def main():
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
         geraet_1, geraet_2 = _apply_geraete_override(geraet_1, geraet_2, training_date)
 
-        # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
-        if lock_trainer and fixed_for_date.get("geraet_1"):
+        # Fest vorgegebene Geraete (Admin, Anmerkung, Override) haben immer Vorrang
+        if fixed_for_date.get("geraet_1") and fixed_for_date.get("geraet_2"):
             geraet_1     = fixed_for_date["geraet_1"]
             geraet_2     = fixed_for_date["geraet_2"]
             print(f"[FIXED] Geräte aus fixed_entries: {geraet_1} + {geraet_2}")
