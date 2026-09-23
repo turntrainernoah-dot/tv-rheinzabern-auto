@@ -164,6 +164,23 @@ FORCE_REGEN = os.environ.get("FORCE_REGEN", "").lower() == "true"
 # Manueller Nachtrag zu trainingsentfall.json (workflow_dispatch-Input
 # "add_entfall_date", z.B. "2026-08-26") -- siehe _maybe_add_manual_entfall().
 ADD_ENTFALL_DATE = os.environ.get("ADD_ENTFALL_DATE", "").strip()
+# Einmaliger Geraete-Override fuers aktive Training (workflow_dispatch-Input
+# "geraete", z.B. "Sprung+Reck"). Leer = normale Rotation.
+GERAETE_OVERRIDE = os.environ.get("GERAETE_OVERRIDE", "").strip()
+
+
+def _apply_geraete_override(geraet_1, geraet_2, training_date):
+    if not GERAETE_OVERRIDE:
+        return geraet_1, geraet_2
+    for i, (r1, r2) in enumerate(GERAETE_ROTATION):
+        if GERAETE_OVERRIDE.replace(" ", "").lower() == f"{r1}+{r2}".lower():
+            if i == NUR_FREITAGS_IDX and training_date.weekday() != 4:
+                print(f"[OVERRIDE] {r1}+{r2} nur freitags erlaubt -> ignoriert.")
+                return geraet_1, geraet_2
+            print(f"[OVERRIDE] Geraete {geraet_1}+{geraet_2} -> {r1}+{r2}")
+            return r1, r2
+    print(f"[OVERRIDE] '{GERAETE_OVERRIDE}' unbekannt -> ignoriert.")
+    return geraet_1, geraet_2
 
 # ════════════════════════════════════════════════════════════════
 #  STATE (gespeichert auf dem Server als state_auto.json)
@@ -244,17 +261,40 @@ def get_gear_from_plan_data(state):
     return None, None, None
 
 
-def get_next_gear(state, exclude_date=None, fixed_entries=None):
-    """Bestimmt die Geraete fuers naechste Training aus den letzten (bis zu) 8
-    ECHTEN Trainingsplaenen in plan_data. Ausgefallene Trainings
-    (entfall_published) und Eintraege ohne gueltige Geraetekombination werden
-    ignoriert. Vom juengsten gueltigen Plan wird genau EIN Schritt weitergerueckt.
-    Reihenfolge (Zyklus): Sprung+Reck -> Seitpferd+Ringe -> Boden+Barren.
-    Gibt combo_idx zurueck. geraet_combo_index wird bewusst NICHT mehr
-    verwendet (vermeidet Drift / uebersprungene Geraete). Das fruehere
-    zusaetzliche g1_starts_geraet2-Alternierungs-Flag diente nur der
-    Farbwahl und ist seit dem Gruppenzeiten-Umbau entfallen (siehe
-    farbe_fuer_phase)."""
+# Geraete-Rotation (Noah, 23.09.2026): Seitpferd+Ringe NUR freitags, die
+# anderen beiden Kombis Mi oder Fr. Statt starr "einen Schritt weiter" kommt
+# immer die Kombi dran, die in den letzten ROTATION_FENSTER echten Trainings
+# (~3 Wochen) am seltensten war -> ueber 2-4 Wochen gleich haeufig, auch
+# wenn ein Training ausfaellt. Ohne Ausfaelle ergibt sich der 3-Wochen-Zyklus
+# Mi S+R | Fr SP+R | Mi B+B | Fr SP+R | Mi S+R | Fr B+B.
+ROTATION_FENSTER = 6
+NUR_FREITAGS_IDX = 2   # ("Seitpferd", "Ringe")
+
+
+def waehle_geraet_idx(verlauf, ist_freitag):
+    """verlauf: Combo-Indizes der bisherigen echten Trainings (alt -> neu).
+    Waehlt die im Fenster seltenste erlaubte Kombi. Gleichstand: freitags
+    zuerst Seitpferd+Ringe (kann nur freitags), sonst die am laengsten nicht
+    mehr gemachte."""
+    fenster = verlauf[-ROTATION_FENSTER:]
+    erlaubt = [i for i in range(len(GERAETE_ROTATION))
+               if ist_freitag or i != NUR_FREITAGS_IDX]
+
+    def zuletzt(i):
+        for pos in range(len(verlauf) - 1, -1, -1):
+            if verlauf[pos] == i:
+                return pos
+        return -1
+
+    return min(erlaubt, key=lambda i: (fenster.count(i),
+                                       0 if (ist_freitag and i == NUR_FREITAGS_IDX) else 1,
+                                       zuletzt(i)))
+
+
+def _geraete_verlauf(state, exclude_date=None, fixed_entries=None):
+    """(datum, datum_kurz, combo_idx) aller ECHTEN Trainings, alt -> neu.
+    Ausgefallene (entfall_published) und Eintraege ohne gueltige
+    Geraetekombination werden ignoriert; Admin-Geraete (fixed_entries) zaehlen."""
     plan_data = state.get("plan_data", {})
     entfall   = set(state.get("entfall_published", []))
     fixed_entries = fixed_entries or {}
@@ -278,21 +318,33 @@ def get_next_gear(state, exclude_date=None, fixed_entries=None):
         except Exception:
             continue
         valid.append((d, datum_kurz, idx))
+    valid.sort(key=lambda x: x[0])
+    return valid
 
+
+def get_next_gear(state, exclude_date=None, fixed_entries=None, target_date=None):
+    """Bestimmt die Geraete fuers Training am target_date (Default: der
+    Tag aus exclude_date, sonst active_training_date()). Regeln siehe
+    waehle_geraet_idx(). Gibt combo_idx zurueck."""
+    if target_date is None:
+        try:
+            target_date = datetime.strptime(exclude_date, "%d.%m.%y").date()
+        except Exception:
+            target_date = active_training_date()
+    ist_freitag = target_date.weekday() == 4
+    valid = [v for v in _geraete_verlauf(state, exclude_date, fixed_entries)
+             if v[0] < target_date]
     if not valid:
         print("[ROTATION] Kein gueltiger Geraete-Verlauf in plan_data -> Default Sprung+Reck.")
         return 1   # Sprung+Reck als sinnvoller Startpunkt
 
-    valid.sort(key=lambda x: x[0])
-    last8 = valid[-8:]
-    _, last_key, last_idx = last8[-1]
-    next_idx = (last_idx + 1) % len(GERAETE_ROTATION)
+    next_idx = waehle_geraet_idx([i for _, _, i in valid], ist_freitag)
+    fenster = valid[-ROTATION_FENSTER:]
     verlauf = ", ".join(f"{k}={GERAETE_ROTATION[i][0]}+{GERAETE_ROTATION[i][1]}"
-                        for _, k, i in last8)
-    print(f"[ROTATION] Letzte {len(last8)} echten Trainings: {verlauf}")
-    print(f"[ROTATION] Juengster echter Plan {last_key} = "
-          f"{GERAETE_ROTATION[last_idx][0]}+{GERAETE_ROTATION[last_idx][1]} "
-          f"-> naechster: {GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
+                        for _, k, i in fenster)
+    print(f"[ROTATION] Letzte {len(fenster)} echten Trainings: {verlauf}")
+    print(f"[ROTATION] {target_date.strftime('%d.%m.%y')} ({'Fr' if ist_freitag else 'kein Fr -> ohne Seitpferd+Ringe'})"
+          f" -> {GERAETE_ROTATION[next_idx][0]}+{GERAETE_ROTATION[next_idx][1]}")
     return next_idx
 
 def active_training_date():
@@ -1931,16 +1983,17 @@ def ki_resolve_target(ziel, state):
                 pass
     if typ == "naechstes_geraet" and ziel.get("geraet"):
         g = ziel["geraet"]
-        try:
-            idx, _ = get_next_gear(state, exclude_date=None)
-        except Exception:
-            idx = state.get("geraet_combo_index", 0)
         d = active_training_date()
+        try:
+            verlauf = [i for dd, _, i in _geraete_verlauf(state) if dd < d]
+        except Exception:
+            verlauf = []
         for _ in range(24):
-            if g in GERAETE_ROTATION[idx % len(GERAETE_ROTATION)]:
+            idx = waehle_geraet_idx(verlauf, d.weekday() == 4) if verlauf else 1
+            if g in GERAETE_ROTATION[idx]:
                 return d.strftime("%d.%m.%y")
+            verlauf.append(idx)
             d = _ki_next_training_after(d)
-            idx += 1
     return active_training_date().strftime("%d.%m.%y")
 
 # ---- KI-Einteilung: Zusammenlegen / Zuteilen im Raster ----
@@ -2877,6 +2930,8 @@ def main():
 
         geraet_1     = plan_data["geraet_1"]
         geraet_2     = plan_data["geraet_2"]
+        geraet_1, geraet_2 = _apply_geraete_override(geraet_1, geraet_2, training_date)
+        plan_data["geraet_1"], plan_data["geraet_2"] = geraet_1, geraet_2
 
         issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
         # Bei gesperrtem Trainer-Plan: Trainer-Anzahl-Fehler ignorieren
@@ -3037,6 +3092,7 @@ def main():
         # ignorieren und genau einen Schritt weiterrücken (robust gegen Drift).
         new_combo_idx = get_next_gear(state, exclude_date=datum_kurz, fixed_entries=fixed_entries)
         geraet_1, geraet_2 = GERAETE_ROTATION[new_combo_idx]
+        geraet_1, geraet_2 = _apply_geraete_override(geraet_1, geraet_2, training_date)
 
         # Bei gesperrtem Trainer-Plan: Geräte aus fixed_entries übernehmen (falls vorhanden)
         if lock_trainer and fixed_for_date.get("geraet_1"):
