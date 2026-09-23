@@ -937,6 +937,12 @@ def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude, prefer=None)
         return non_immer[0] if non_immer else candidates[0]
     return None
 
+# Zeilen, fuer die trotz Vertretung/Zusammenlegen kein Trainer gefunden wurde
+# (-> Mail-Hinweis an Noah). Wird bei jedem apply_timing_coverage() neu gefuellt.
+COVER_WARNUNGEN = []
+GRID_ROWS_AKTUELL = []   # Zeitraster des aktuellen Laufs (nur fuer Warn-Texte)
+
+
 def apply_timing_coverage(trainer_plan, trainer_timing):
     """Vertretung: geht ein Trainer frueher / kommt spaeter, uebernimmt fuer die
     fehlenden Slots ein freier Trainer (bevorzugt der Springer) dessen Gruppe.
@@ -944,6 +950,7 @@ def apply_timing_coverage(trainer_plan, trainer_timing):
     Bugfix 12.09.2026: derselbe Vertreter wird ueber mehrere Zeilen derselben
     Abwesenheit hinweg beibehalten, statt pro Zeile neu (und dabei zufaellig
     an einen anderen Trainer) zu vergeben -- siehe _find_free_coverer()."""
+    COVER_WARNUNGEN.clear()
     if not trainer_timing:
         return trainer_plan
     GRUPPEN_COLORS = {"aufwaermen", "g1_blau", "g2_orange"}
@@ -975,8 +982,26 @@ def apply_timing_coverage(trainer_plan, trainer_timing):
                 trainer_plan[partner] = p
                 preferred_coverer = partner
                 print(f"[COVER] Zeile {i}: {text} ohne freien Trainer -> {p[i][0]} zusammengelegt.")
+                continue
+            # Noah, 23.09.2026: auch keine Gruppe am selben Geraet -> zwei
+            # ANDERE Gruppen zusammenlegen (z.B. G1+G2) und den dadurch frei
+            # gewordenen Trainer die verwaiste Gruppe uebernehmen lassen.
+            freed = _free_up_trainer(trainer_plan, trainer_timing, i, name, prefer=preferred_coverer)
+            if freed:
+                keeper, freed_t = freed
+                pk = list(trainer_plan[keeper]); pf = list(trainer_plan[freed_t])
+                pk[i] = (_merge_cell_text(pk[i][0], pf[i][0]), pk[i][1])
+                pf[i] = (text, ck)
+                trainer_plan[keeper] = pk; trainer_plan[freed_t] = pf
+                preferred_coverer = freed_t
+                print(f"[COVER] Zeile {i}: {pk[i][0]} zusammengelegt, frei gewordener Trainer uebernimmt {text}.")
             else:
-                print(f"[COVER-WARN] Zeile {i}: {text} ohne Trainer, kein Merge-Partner gefunden.")
+                zeit = ""
+                if 0 <= i < len(GRID_ROWS_AKTUELL):
+                    _m = GRID_ROWS_AKTUELL[i][0]
+                    zeit = f" ab {_m//60:02d}:{_m%60:02d}"
+                COVER_WARNUNGEN.append(f"{text}{zeit} ohne Trainer")
+                print(f"[COVER-WARN] Zeile {i}: {text} ohne Trainer, keine Loesung gefunden.")
     # Anonyme Uebersicht (oeffentliches Repo -> keine Namen im Log)
     for k, (t, plan) in enumerate(trainer_plan.items(), 1):
         if plan:
@@ -1005,6 +1030,47 @@ def _merge_cell_text(own, extra):
     order = {g: k for k, g in enumerate(GRUPPEN_ORDER)}
     groups.sort(key=lambda g: order.get(g, 99))
     return ("AW " if aw else "") + unit_label(groups)
+
+
+def _free_up_trainer(trainer_plan, trainer_timing, slot, exclude, prefer=None):
+    """Sucht zwei Trainer, die in 'slot' Gruppen mit derselben Phase/Farbe
+    halten (-> koennen zusammengelegt werden). Gibt (keeper, freed) zurueck:
+    keeper uebernimmt beide Gruppen, freed wird frei. Bevorzugt feste Paare
+    (G1+G2, G3+G4) und moeglichst kleine Einheiten."""
+    order = {g: k for k, g in enumerate(GRUPPEN_ORDER)}
+    holders = []
+    for t, plan in trainer_plan.items():
+        if t == exclude or not plan or slot >= len(plan):
+            continue
+        info = trainer_timing.get(t)
+        if info and slot in info.get("blocked", []):
+            continue
+        ctext, cck = plan[slot]
+        if cck not in ("aufwaermen", "g1_blau", "g2_orange"):
+            continue
+        groups = _cell_groups(ctext)
+        if groups:
+            holders.append((t, cck, groups))
+    best = None
+    for a in range(len(holders)):
+        for b in range(a + 1, len(holders)):
+            ta, cka, ga = holders[a]
+            tb, ckb, gb = holders[b]
+            if cka != ckb or set(ga) & set(gb):
+                continue
+            praef = any(_MERGE_PARTNER_PRAEFERENZ.get(g) in gb for g in ga)
+            kompatibel = all(zeiten_kompatibel(GRUPPEN_ZEITEN, x, y) for x in ga for y in gb)
+            # frei wird bevorzugt der bisherige Vertreter (Kontinuitaet), sonst
+            # derjenige mit der hoeheren Gruppe (z.B. G2-Trainer bei G1+G2)
+            if prefer == ta or (prefer != tb and order.get(ga[0], 99) > order.get(gb[0], 99)):
+                keeper, freed = tb, ta
+            else:
+                keeper, freed = ta, tb
+            key = (0 if prefer in (ta, tb) else 1, 0 if praef else 1,
+                   0 if kompatibel else 1, len(ga) + len(gb), keeper, freed)
+            if best is None or key < best:
+                best = key
+    return (best[-2], best[-1]) if best else None
 
 
 def _find_merge_partner(trainer_plan, trainer_timing, slot, exclude, text, ck, prefer=None):
@@ -2751,6 +2817,7 @@ def main():
     # Abwesenheiten und Hash berechnen
     tag = tag_of_date(training_date)
     grid_rows, grid_phase = compute_time_grid(GRUPPEN_ZEITEN, tag)
+    GRID_ROWS_AKTUELL[:] = grid_rows
     absences, late_notes, trainer_timing = get_absences(abmeldungen, training_date, grid_rows)
     late_notes = late_notes + timing_annotations(trainer_timing)
     # raw_abm_hash für konsistenten Vergleich mit check_quick.py (beide nutzen raw JSON hash)
@@ -3120,6 +3187,8 @@ def main():
         if other_new_warnings:
             print(f"[INFO] Reine Turner-Hinweise fuer {datum} (keine Mail, kein Handlungsbedarf): {other_new_warnings}")
 
+        if COVER_WARNUNGEN:
+            hinweise.append("ACHTUNG, kein Trainer: " + ", ".join(COVER_WARNUNGEN) + " - bitte selbst klären")
         # EINE konsolidierte, kurze Mail - nur wenn es etwas zu berichten gibt.
         # Reine Turner-Abwesenheitsaenderungen ohne weitere Auffaelligkeit -> keine Mail.
         if hinweise:
@@ -3281,6 +3350,8 @@ def main():
         if other_warnings:
             print(f"[INFO] Reine Turner-Hinweise fuer {datum} (keine Erwaehnung, kein Handlungsbedarf): {other_warnings}")
 
+        if COVER_WARNUNGEN:
+            hinweise.append("ACHTUNG, kein Trainer: " + ", ".join(COVER_WARNUNGEN) + " - bitte selbst klären")
         # Haupt-Notification: Plan fertig (immer genau EINE Mail, kurz, mit Hinweisen falls vorhanden)
         text = f"Hallo, der Trainingsplan für {wtag}, {datum} ist erstellt."
         if hinweise:
