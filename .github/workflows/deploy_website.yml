@@ -33,6 +33,7 @@ on:
           - tv-wogele2026
           - tv-trainerportal
           - familie-website
+          - abi-lernen
       branch:
         description: "Branch (leer = main)"
         type: string
@@ -66,6 +67,7 @@ jobs:
             tv-wogele2026)    P=/wogele2026 ;;
             tv-trainerportal) P=/ ;;
             familie-website)  P=/familievlklv56j1b ;;
+            abi-lernen)       P=/abi ;;
             *) echo "Unbekannte Website"; exit 1 ;;
           esac
           B="${{ inputs.branch }}"; [ -z "$B" ] && B=main
