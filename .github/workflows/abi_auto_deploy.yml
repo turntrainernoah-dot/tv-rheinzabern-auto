@@ -1,0 +1,80 @@
+# Abi-Lernapp automatisch deployen
+# Alle 5 Minuten: Hat abi-lernen (main) einen neuen Stand, der noch nicht auf dem Server ist,
+# wird er hochgeladen. Der zuletzt deployte Commit steht auf dem Server in /abi/.deployed_sha.
+# Nutzt die vorhandenen Secrets (REPO_READ_TOKEN, SSH_*). Oeffentliches Repo = 0 Minuten Kosten.
+name: Abi automatisch deployen
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: abi-auto-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: turntrainernoah-dot/abi-lernen
+          ref: main
+          token: ${{ secrets.REPO_READ_TOKEN }}
+          path: site
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.x" }
+      - run: pip install --quiet paramiko
+      - name: Neuer Stand?
+        id: check
+        working-directory: site
+        run: |
+          SHA=$(git rev-parse HEAD)
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+          python - <<'PY' > /tmp/remote_sha.txt
+          import os, paramiko
+          t = paramiko.Transport((os.environ["SSH_HOST"], int(os.environ.get("SSH_PORT") or 22)))
+          t.connect(username=os.environ["SSH_USER"], password=os.environ["SSH_PASSWORD"])
+          s = paramiko.SFTPClient.from_transport(t)
+          try:
+              print(s.open("/abi/.deployed_sha").read().decode().strip())
+          except Exception:
+              print("")
+          t.close()
+          PY
+          if [ "$(cat /tmp/remote_sha.txt)" = "$SHA" ]; then
+            echo "Schon aktuell ($SHA)"; echo "neu=false" >> $GITHUB_OUTPUT
+          else
+            echo "Neuer Stand: $SHA"; echo "neu=true" >> $GITHUB_OUTPUT
+          fi
+      - name: Hochladen
+        if: steps.check.outputs.neu == 'true'
+        working-directory: site
+        env:
+          DRY_RUN: "false"
+          DEPLOY_PATH: /abi
+        run: python .github/scripts/deploy.py
+      - name: Stand merken und Seite pruefen
+        if: steps.check.outputs.neu == 'true'
+        working-directory: site
+        run: |
+          python - <<'PY'
+          import os, io, paramiko
+          t = paramiko.Transport((os.environ["SSH_HOST"], int(os.environ.get("SSH_PORT") or 22)))
+          t.connect(username=os.environ["SSH_USER"], password=os.environ["SSH_PASSWORD"])
+          s = paramiko.SFTPClient.from_transport(t)
+          s.putfo(io.BytesIO("${{ steps.check.outputs.sha }}".encode()), "/abi/.deployed_sha")
+          t.close()
+          PY
+          code=$(curl -s -o /dev/null -w "%{http_code}" -L https://tv-rheinzabern.e-websolutions.de/abi/)
+          echo "HTTP $code"; [ "$code" = "200" ]
