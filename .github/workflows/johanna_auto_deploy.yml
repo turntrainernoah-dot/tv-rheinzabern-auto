@@ -10,9 +10,8 @@
 name: Johanna automatisch deployen
 
 on:
-  # schedule wird erst aktiviert, nachdem der erste manuelle Lauf geklappt hat
-  # schedule:
-  #   - cron: "*/5 * * * *"
+  schedule:
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 permissions:
