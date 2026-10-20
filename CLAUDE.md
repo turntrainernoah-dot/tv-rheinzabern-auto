@@ -15,6 +15,8 @@ Die Workflows in diesem Repo sind keine Spielerei, sondern laufender Betrieb: Tr
 - `auto_trainingsplan.py`, `auto_wochenchallenge.py`, `auto_wc_video.py`, `create_wochenchallenge_v2.py`, `wc_chat_parser.py`, `heartbeat.py`, `backup_state.py`, `build_step.py`, `check_quick.py` — die einzelnen Automatik-Skripte. `meldungen.py` — gemeinsame Problem-Meldung in den Admin-Bereich (siehe unten).
 - `.github/workflows/`: `auto_trainingsplan.yml`, `auto_wochenchallenge.yml`, `auto_wc_video.yml`, `auto_backup.yml`, `heartbeat.yml` — je ein Workflow pro Automatik.
 - `fonts/`, `state_backups/`: Hilfsdateien bzw. Zustandssicherungen der Automatik.
+- `.github/workflows/keepalive.yml`: committet am 1. jedes Monats `keepalive.txt` (aktuelles Datum). Grund: GitHub deaktiviert Cron-Workflows in öffentlichen Repos nach 60 Tagen ohne Commit. **Nicht entfernen.**
+- `Alt/`: abgelegte, nicht mehr aktive Workflows (z. B. `abi_auto_deploy.yml`, der frühere 5-Minuten-Deploy der privaten Abi-Lernapp). Nichts löschen; zurück nach `.github/workflows/` verschieben würde den Workflow wieder aktivieren.
 - Zugangsdaten (SSH, Gmail) liegen ausschließlich als GitHub Secrets, nie im Code — siehe `README.md`.
 
 ## Benachrichtigungen (Stand 20.10.2026): "Nachrichten" im Admin-Bereich statt Mail
@@ -151,7 +153,7 @@ curl -s -o /dev/null -w "%{http_code}
 ```
 
 Serverpfade: tv-belege -> /belege/ | tv-spiele -> /spiele/ | tv-wogele2026 -> /wogele2026/ |
-familie-website -> /familievlklv56j1b/ | tv-trainerportal -> /
+tv-trainerportal -> /  (familie-website und abi-lernen deployen seit 20.10.2026 selbst in ihrem eigenen Repo)
 
 Wenn `gh run watch` fehlschlaegt (exit-status ungleich 0), ist der Deploy NICHT gelaufen.
 Haeufigster Grund ist die Branch-Pruefung unten. Dann den Grund berichten, nicht einfach

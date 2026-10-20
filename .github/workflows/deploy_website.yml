@@ -14,6 +14,9 @@
 # Aenderungen auf einem Feature-Branch lagen und nie gemerged wurden. Ein stiller
 # Fehlschlag ist schlimmer als ein lauter.
 #
+# Nicht mehr hier: familie-website und abi-lernen (privat) deployen seit 20.10.2026 ueber den
+# eigenen Workflow in ihrem eigenen Repo (Push auf main). Dieser Workflow ist fuer die Vereinsseiten.
+#
 # SICHERHEIT: Laeuft nur auf ausdrueckliches Ausloesen, nie automatisch. Uebertraegt
 # ausschliesslich, was die Erlaubnisliste im deploy.py des Repos zulaesst -
 # config.php, Datenbanken und hochgeladene Dateien sind dort ausgeschlossen.
@@ -32,8 +35,6 @@ on:
           - tv-spiele
           - tv-wogele2026
           - tv-trainerportal
-          - familie-website
-          - abi-lernen
       branch:
         description: "Branch (leer = main)"
         type: string
@@ -66,8 +67,6 @@ jobs:
             tv-spiele)        P=/spiele ;;
             tv-wogele2026)    P=/wogele2026 ;;
             tv-trainerportal) P=/ ;;
-            familie-website)  P=/familievlklv56j1b ;;
-            abi-lernen)       P=/abi ;;
             *) echo "Unbekannte Website"; exit 1 ;;
           esac
           B="${{ inputs.branch }}"; [ -z "$B" ] && B=main

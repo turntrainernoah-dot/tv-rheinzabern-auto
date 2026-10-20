@@ -1,0 +1,34 @@
+# Keepalive: haelt die Cron-Workflows dieses oeffentlichen Repos am Leben.
+# GitHub deaktiviert geplante Workflows in oeffentlichen Repos automatisch, wenn es 60 Tage
+# lang keine Repo-Aktivitaet (Commit) gab. Darum committet dieser Workflow am 1. jedes Monats
+# eine Datei keepalive.txt mit dem aktuellen Datum. NICHT ENTFERNEN.
+# Hinweis: Pushes mit dem Standard-GITHUB_TOKEN loesen keine anderen Workflows aus -
+# die Automatik wird dadurch also nicht zusaetzlich gestartet.
+name: Keepalive
+
+on:
+  schedule:
+    - cron: "17 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: keepalive.txt aktualisieren und pushen
+        run: |
+          date -u +"%Y-%m-%d" > keepalive.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add keepalive.txt
+          if git diff --cached --quiet; then
+            echo "keepalive.txt unveraendert (heute schon eingetragen)."
+          else
+            git commit -m "Keepalive $(cat keepalive.txt)"
+            git push
+          fi

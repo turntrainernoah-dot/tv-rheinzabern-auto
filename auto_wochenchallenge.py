@@ -36,8 +36,8 @@ BEREICH = "Wochenchallenge"
 #  KONFIGURATION
 # ════════════════════════════════════════════════════════════════
 
-SSH_HOST      = os.environ.get("SSH_HOST",     "access-5017462830.webspace-host.com")
-SSH_USER      = os.environ.get("SSH_USER",     "a2358459")
+SSH_HOST      = os.environ.get("SSH_HOST",     "")
+SSH_USER      = os.environ.get("SSH_USER",     "")
 SSH_PASSWORD  = os.environ.get("SSH_PASSWORD", "")
 SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
 
