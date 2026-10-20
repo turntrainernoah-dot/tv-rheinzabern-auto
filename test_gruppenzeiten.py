@@ -745,11 +745,12 @@ def test_entfall_verarbeitet_alle_termine_nicht_nur_naechsten():
     echtes SFTP -- prueft nur, dass die Datumsberechnung (dd.mm.yy/dd.mm.yyyy/
     Wochentag) fuer ein beliebiges (auch vergangenes) ISO-Datum korrekt ist und
     _publish_entfall_for bei bereits korrekt veroeffentlichtem Stand ein zweites
-    Mal nichts tut (kein erneuter Upload/keine erneute WhatsApp-Nachricht)."""
-    calls = {"publish": 0, "whatsapp": 0}
-    orig_publish, orig_wa, orig_exists = a.publish_entfall, a.send_whatsapp, a.plan_exists
+    Mal nichts tut (kein erneuter Upload). Seit 20.10.2026: ein Entfall ist reine
+    Info und erzeugt KEINE Meldung im Admin-Bereich."""
+    calls = {"publish": 0, "meldung": 0}
+    orig_publish, orig_meld, orig_exists = a.publish_entfall, a.melde_problem, a.plan_exists
     a.publish_entfall = lambda *args, **kwargs: calls.__setitem__("publish", calls["publish"] + 1)
-    a.send_whatsapp = lambda *args, **kwargs: calls.__setitem__("whatsapp", calls["whatsapp"] + 1)
+    a.melde_problem = lambda *args, **kwargs: calls.__setitem__("meldung", calls["meldung"] + 1)
     a.plan_exists = lambda sftp, dk: True
     try:
         state = {}
@@ -759,14 +760,14 @@ def test_entfall_verarbeitet_alle_termine_nicht_nur_naechsten():
         # gemeldete Fall: naechstes aktives Training ist laengst ein anderes.
         did = a._publish_entfall_for(None, state, fixed_entries, "2026-08-26", entfall_published)
         check("erste Veroeffentlichung eines vergangenen Entfall-Datums findet statt",
-              did is True and calls["publish"] == 1 and calls["whatsapp"] == 1)
+              did is True and calls["publish"] == 1 and calls["meldung"] == 0)
         check("Datum korrekt als dd.mm.yy in entfall_published gemerkt", "26.08.26" in entfall_published)
 
         did2 = a._publish_entfall_for(None, state, fixed_entries, "2026-08-26", entfall_published)
         check("zweiter Aufruf fuer denselben, bereits veroeffentlichten Entfall tut nichts mehr",
-              did2 is False and calls["publish"] == 1 and calls["whatsapp"] == 1)
+              did2 is False and calls["publish"] == 1 and calls["meldung"] == 0)
     finally:
-        a.publish_entfall, a.send_whatsapp, a.plan_exists = orig_publish, orig_wa, orig_exists
+        a.publish_entfall, a.melde_problem, a.plan_exists = orig_publish, orig_meld, orig_exists
 
 
 def test_entfall_ignoriert_alte_karteileichen():

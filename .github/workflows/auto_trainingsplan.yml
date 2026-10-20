@@ -75,11 +75,6 @@ jobs:
           SSH_USER:           ${{ secrets.SSH_USER }}
           SSH_PASSWORD:       ${{ secrets.SSH_PASSWORD }}
           SSH_PORT:           ${{ secrets.SSH_PORT }}
-          WHATSAPP_PHONE:     ${{ secrets.WHATSAPP_PHONE }}
-          CALLMEBOT_APIKEY:   ${{ secrets.CALLMEBOT_APIKEY }}
-          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          EMAIL_TO:           ${{ secrets.EMAIL_TO }}
           GH_MODELS_TOKEN:    ${{ secrets.GH_MODELS_TOKEN }}
           FORCE_REGEN:        ${{ inputs.force || (inputs.add_entfall_date != '') || (inputs.geraete != '') || inputs.debug_dump }}
           ADD_ENTFALL_DATE:   ${{ inputs.add_entfall_date }}

@@ -10,7 +10,7 @@ Ablauf:
   check_quick.py → needs_update=true → DIESER SCRIPT läuft
   - Plan vorhanden + Abwesenheitsänderung → Plan aktualisieren (Trainer unverändert)
   - Kein Plan + Veröffentlichungsfenster (Mi/Fr 22:00 CEST) → Neuen Plan erstellen
-  - Trainer-Wechsel → E-Mail, manuell prüfen
+  - Trainer-Wechsel → Plan wird automatisch neu gebaut (Probleme → Admin-Bereich "Nachrichten")
 """
 
 import json, hashlib, os, re, sys, tempfile, shutil, subprocess, itertools, urllib.request, urllib.parse
@@ -19,6 +19,7 @@ from datetime import date, timedelta, datetime, timezone
 
 import paramiko
 import openpyxl
+from meldungen import melde_problem
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 
@@ -153,8 +154,6 @@ SSH_HOST      = os.environ.get("SSH_HOST",     "access-5017462830.webspace-host.
 SSH_USER      = os.environ.get("SSH_USER",     "a2358459")
 SSH_PASSWORD  = os.environ.get("SSH_PASSWORD", "")
 SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
-WHATSAPP_PHONE    = os.environ.get("WHATSAPP_PHONE", "")
-CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 # Manueller Regenerations-Erzwinger (workflow_dispatch-Input "force" in
 # auto_trainingsplan.yml) -- fuer den Fall, dass ein reiner Code-Fix (z.B. an
 # der Trainer-Zuteilungslogik) auf einen bereits generierten Plan angewendet
@@ -637,12 +636,7 @@ def _publish_entfall_for(sftp, state, fixed_entries, iso_date, entfall_published
     if dk not in state.setdefault("generated_plans", []):
         state["generated_plans"].append(dk)
     state.get("plan_data", {}).pop(dk, None)  # alten Plan-Hash verwerfen
-    if not was_published:
-        send_whatsapp(
-            f"Hi, Cloude hier ⚠️\n\n"
-            f"Das Training am {wtag}, {datum} ist als Trainingsentfall markiert.\n"
-            f"Ich habe den Entfall-Hinweis veröffentlicht und erstelle KEINEN normalen Plan."
-        )
+    # Seit 20.10.2026 keine Benachrichtigung mehr (reine Info, kein Problem).
     print(f"[ENTFALL] Entfall für {datum} verarbeitet.")
     return True
 
@@ -939,7 +933,7 @@ def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude, prefer=None)
     return None
 
 # Zeilen, fuer die trotz Vertretung/Zusammenlegen kein Trainer gefunden wurde
-# (-> Mail-Hinweis an Noah). Wird bei jedem apply_timing_coverage() neu gefuellt.
+# (-> Meldung im Admin-Bereich). Wird bei jedem apply_timing_coverage() neu gefuellt.
 COVER_WARNUNGEN = []
 GRID_ROWS_AKTUELL = []   # Zeitraster des aktuellen Laufs (nur fuer Warn-Texte)
 
@@ -1175,7 +1169,7 @@ def get_absences(abmeldungen, training_date, grid_rows):
 
 def detect_complex(absences, late_notes):
     # Es wird IMMER ein Plan erstellt. Staffing-Probleme sind nur soft_warnings
-    # (Hinweis per WhatsApp/Mail) -> autonomer Plan auch bei wenig Trainern/Kindern.
+    # (nur Log) -> autonomer Plan auch bei wenig Trainern/Kindern.
     issues        = []
     soft_warnings = []
     anwesend_trainer = [t for t in ALLE_TRAINER if t not in absences.get("Trainer", [])]
@@ -1805,47 +1799,10 @@ def build_excel(datum, wochentag, geraet_1, geraet_2, abwesend,
     return xlsx_path, pdf_path
 
 # ════════════════════════════════════════════════════════════════
-#  WHATSAPP (CallMeBot)
+#  BENACHRICHTIGUNG
+#  Seit 20.10.2026 keine E-Mail/WhatsApp mehr. Probleme landen per
+#  meldungen.melde_problem() im Admin-Bereich ("Nachrichten").
 # ════════════════════════════════════════════════════════════════
-
-def send_email(text):
-    import os, smtplib, ssl as _ssl
-    from email.mime.text import MIMEText
-    user = os.environ.get("GMAIL_USER", "")
-    pw   = os.environ.get("GMAIL_APP_PASSWORD", "")
-    to   = os.environ.get("EMAIL_TO", "") or user
-    if not user or not pw:
-        print("[MAIL] keine Gmail-Zugangsdaten - uebersprungen.")
-        return
-    try:
-        lines = [l for l in text.strip().splitlines() if l.strip()]
-        subj = "TV Rheinzabern: " + (lines[0][:80] if lines else "Info")
-        msg = MIMEText(text, _charset="utf-8")
-        msg["Subject"] = subj
-        msg["From"] = user
-        msg["To"] = to
-        ctx = _ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
-            s.login(user, pw)
-            s.sendmail(user, [to], msg.as_string())
-        print("[MAIL] gesendet an", to)
-    except Exception as e:
-        print("[MAIL] Fehler:", e)
-
-
-def send_whatsapp(text):
-    """Sendet eine WhatsApp-Nachricht via CallMeBot (kostenlos)."""
-    send_email(text)
-    if not WHATSAPP_PHONE or not CALLMEBOT_APIKEY:
-        print(f"[WA-TEST] {text[:200]}")
-        return
-    try:
-        encoded = urllib.parse.quote(text)
-        url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_PHONE}&text={encoded}&apikey={CALLMEBOT_APIKEY}"
-        with urllib.request.urlopen(url, timeout=15) as r:
-            print(f"[OK] WhatsApp gesendet (HTTP {r.status}): {text[:80]}...")
-    except Exception as e:
-        print(f"[FEHLER] WhatsApp konnte nicht gesendet werden: {e}")
 
 # ════════════════════════════════════════════════════════════════
 #  MAIN
@@ -1936,10 +1893,12 @@ def require_server_roster():
                "im Code mehr (Phase 2, 24.08.2026), damit die Automatik nie mit falschen/"
                "leeren Daten weiterlaeuft.")
         print(f"[FATAL] {msg}")
-        try:
-            send_whatsapp(f"Hi, Cloude hier 🚨\n\n{msg}")
-        except Exception:
-            pass
+        melde_problem(
+            "Trainingsplan",
+            "Der Trainingsplan konnte nicht erstellt werden, weil die Gruppen- und "
+            "Personenliste auf dem Server nicht gelesen werden konnte. Bitte im "
+            "Admin-Bereich unter \"Gruppen bearbeiten\" pruefen, ob die Liste noch da ist.",
+            msg)
         raise SystemExit(msg)
 
 
@@ -3150,7 +3109,7 @@ def main():
                   f"{stored_trainer_abs} → {new_trainer_abs}")
             trainer_changed = False
 
-        # Kurze Hinweise sammeln -> am Ende EINE konsolidierte Mail statt mehrerer
+        # Kurze Hinweise sammeln -> nur noch fuers Log (seit 20.10.2026 keine Mail mehr)
         hinweise = []
 
         if trainer_changed:
@@ -3285,18 +3244,12 @@ def main():
         if other_new_warnings:
             print(f"[INFO] Reine Turner-Hinweise fuer {datum} (keine Mail, kein Handlungsbedarf): {other_new_warnings}")
 
+        # Seit 20.10.2026: keine Mail mehr. Nur ein echtes Problem (Zeitblock ohne
+        # Trainer) wird als Meldung in den Admin-Bereich geschrieben; die reinen
+        # Infos (neue Anmerkung, Verspaetung, Zusammenlegung) stehen nur im Log.
         if COVER_WARNUNGEN:
-            hinweise.append("ACHTUNG, kein Trainer: " + ", ".join(COVER_WARNUNGEN) + " - bitte selbst klären")
-        # EINE konsolidierte, kurze Mail - nur wenn es etwas zu berichten gibt.
-        # Reine Turner-Abwesenheitsaenderungen ohne weitere Auffaelligkeit -> keine Mail.
-        if hinweise:
-            send_whatsapp(
-                f"Hallo, der Trainingsplan für {datum} wurde automatisch aktualisiert: "
-                + "; ".join(hinweise) + ". Bitte bei Gelegenheit kurz prüfen."
-            )
-            print(f"UPDATE FERTIG fuer {datum}. Mail gesendet: {hinweise}")
-        else:
-            print(f"UPDATE FERTIG fuer {datum}. Keine Mail (nur Turner-Abwesenheiten geändert).")
+            _melde_kein_trainer(sftp, datum)
+        print(f"UPDATE FERTIG fuer {datum}. Hinweise: {hinweise or 'keine'}")
 
     else:
         # ── Kein Plan vorhanden: erstelle neuen ────────────────
@@ -3341,7 +3294,7 @@ def main():
             geraet_2     = fixed_for_date["geraet_2"]
             print(f"[FIXED] Geräte aus fixed_entries: {geraet_1} + {geraet_2}")
 
-        # Kurze Hinweise sammeln -> am Ende EINE konsolidierte Mail statt mehrerer
+        # Kurze Hinweise sammeln -> nur noch fuers Log (seit 20.10.2026 keine Mail mehr)
         hinweise = []
 
         issues, anwesend_trainer, soft_warnings = detect_complex(absences, late_notes)
@@ -3435,7 +3388,7 @@ def main():
         }
         save_state(sftp, state)
 
-        # Kurze Hinweise sammeln - fliessen in die EINE Erstellungs-Mail mit ein.
+        # Kurze Hinweise sammeln - nur noch fuers Log.
         # Reine Turner-bezogene Warnungen ohne Handlungsbedarf -> nur Log, keine Erwaehnung.
         if anmerkungen_server:
             hinweise.append("es gibt neue Trainer-Anmerkungen")
@@ -3448,18 +3401,39 @@ def main():
         if other_warnings:
             print(f"[INFO] Reine Turner-Hinweise fuer {datum} (keine Erwaehnung, kein Handlungsbedarf): {other_warnings}")
 
+        # Seit 20.10.2026: keine "Plan erstellt"-Mail mehr, nur noch eine Meldung,
+        # wenn ein Zeitblock ohne Trainer geblieben ist.
         if COVER_WARNUNGEN:
-            hinweise.append("ACHTUNG, kein Trainer: " + ", ".join(COVER_WARNUNGEN) + " - bitte selbst klären")
-        # Haupt-Notification: Plan fertig (immer genau EINE Mail, kurz, mit Hinweisen falls vorhanden)
-        text = f"Hallo, der Trainingsplan für {wtag}, {datum} ist erstellt."
-        if hinweise:
-            text += " " + "; ".join(hinweise).capitalize() + ". Bitte bei Gelegenheit kurz prüfen."
-        send_whatsapp(text)
+            _melde_kein_trainer(sftp, datum)
         print(f"FERTIG! Plan fuer {datum} hochgeladen. Hinweise: {hinweise or 'keine'}")
 
     sftp.close()
     ssh.close()
 
+def _melde_kein_trainer(sftp, datum):
+    melde_problem(
+        "Trainingsplan",
+        f"Im Trainingsplan fuer {datum} ist mindestens ein Zeitblock ohne Trainer "
+        "geblieben (zu viele Trainer abgemeldet). Bitte den Plan auf der Website "
+        "ansehen und selbst klaeren, wer die Gruppe uebernimmt - z.B. im "
+        "Admin-Bereich unter \"Trainingsplan bearbeiten\".",
+        "Ohne Trainer: " + ", ".join(COVER_WARNUNGEN),
+        sftp=sftp)
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        import traceback
+        _tb = traceback.format_exc()
+        print(_tb)
+        melde_problem(
+            "Trainingsplan",
+            "Beim automatischen Erstellen/Aktualisieren des Trainingsplans ist ein "
+            "Fehler passiert. Der Plan auf der Website ist evtl. nicht aktuell. "
+            "Die Automatik versucht es alle 30 Minuten erneut - kommt die Meldung "
+            "immer wieder, bitte Claude fragen.",
+            _tb)
+        raise
 # (Trainingsentfall-Support 19.06.2026)

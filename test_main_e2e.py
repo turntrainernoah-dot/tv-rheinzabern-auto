@@ -64,7 +64,8 @@ files = {
 
 fake_sftp = FakeSFTP(files)
 a.get_sftp = lambda: (FakeSSH(), fake_sftp)
-a.send_whatsapp = lambda text: print(f"[WA-MOCK] {text[:80]}")
+meldungen_calls = []
+a.melde_problem = lambda bereich, text, details="", sftp=None: meldungen_calls.append((bereich, text))
 
 # LibreOffice ist in dieser Sandbox nicht lauffaehig (bestaetigt: bricht schon
 # bei einer trivialen frischen xlsx, unabhaengig von diesem Code) -- fuer den
@@ -118,5 +119,9 @@ state = json.loads(fake_sftp.files["state_auto.json"])
 has_roles = bool(state.get("plan_data", {}).get(datum_kurz, {}).get("trainer_roles"))
 print(f"[{'OK  ' if has_roles else 'FAIL'}] trainer_roles im State gespeichert: {state.get('plan_data', {}).get(datum_kurz, {}).get('trainer_roles')}")
 ok = ok and has_roles
+
+# Normaler Lauf ohne Probleme -> keine Meldung im Admin-Bereich (seit 20.10.2026)
+print(f"[{'OK  ' if not meldungen_calls else 'FAIL'}] keine Problem-Meldung bei normalem Lauf: {meldungen_calls}")
+ok = ok and not meldungen_calls
 
 sys.exit(0 if ok else 1)

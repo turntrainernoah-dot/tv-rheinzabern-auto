@@ -7,23 +7,20 @@ Laeuft OHNE PC:
   2. baut leichtes + schweres Video mit build_step.py (identisch zum PC)
   3. laedt beide Videos nach /wochen-challenge-videos hoch
   4. schreibt verlauf.json zurueck (LRU-Abwechslung bleibt erhalten)
-  5. schickt eine kurze E-Mail ("Video ist hochgeladen.")
+  5. bei einem Fehler: Meldung im Admin-Bereich (config/meldungen.json; seit
+     20.10.2026 keine E-Mail mehr, auch keine Erfolgs-Mail)
 Geplant: Donnerstag 22:00 (fuer die kommende Woche Sa-Di).
 """
-import os, sys, glob, ssl, smtplib, traceback, shutil
+import os, sys, glob, traceback, shutil
 from datetime import date, timedelta
-from email.mime.text import MIMEText
 import paramiko
+
+from meldungen import melde_problem
 
 HOST = os.environ["SSH_HOST"]
 USER = os.environ["SSH_USER"]
 PASS = os.environ["SSH_PASSWORD"]
 PORT = int(os.environ.get("SSH_PORT", "22"))
-GMAIL_USER = os.environ.get("GMAIL_USER", "")
-GMAIL_APP  = os.environ.get("GMAIL_APP_PASSWORD", "")
-# Bestaetigung geht an Noahs persoenliche Adresse (+ optional EMAIL_TO-Secret)
-RECIPIENTS = list(dict.fromkeys(
-    r for r in ["noahwoe0212@gmail.com", os.environ.get("EMAIL_TO", "")] if r))
 
 BASE    = os.path.dirname(os.path.abspath(__file__))
 WORK    = os.path.join(BASE, "wc_video_work")
@@ -143,21 +140,6 @@ def upload_results(videos):
         sftp.close(); t.close()
 
 
-def send_mail(subject, body):
-    if not (GMAIL_USER and GMAIL_APP):
-        print("[mail] keine Gmail-Zugangsdaten -> uebersprungen")
-        return
-    msg = MIMEText(body, _charset="utf-8")
-    msg["Subject"] = subject
-    msg["From"] = GMAIL_USER
-    msg["To"] = ", ".join(RECIPIENTS)
-    ctx = ssl.create_default_context()
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
-        s.login(GMAIL_USER, GMAIL_APP)
-        s.sendmail(GMAIL_USER, RECIPIENTS, msg.as_string())
-    print("[mail] gesendet an", ", ".join(RECIPIENTS))
-
-
 def main():
     if already_done_this_week():
         print(f"[skip] Videos fuer Woche ab {target_sam_str()} existieren bereits - kein erneuter Build (event={WC_EVENT}).")
@@ -169,8 +151,7 @@ def main():
         raise RuntimeError("Keine Quell-Clips in " + REMOTE_SRC)
     videos = build_videos()
     upload_results(videos)
-    names = ", ".join(os.path.basename(v) for v in videos)
-    send_mail("Wochenchallenge Videos", "Video ist hochgeladen.\n\n" + names)
+    print("[upload] fertig:", ", ".join(os.path.basename(v) for v in videos))
     print("DONE")
 
 
@@ -180,8 +161,11 @@ if __name__ == "__main__":
     except Exception:
         tb = traceback.format_exc()
         print("ERROR:\n" + tb)
-        try:
-            send_mail("FEHLER Wochenchallenge Videos", "Fehler beim Erstellen:\n\n" + tb[-1500:])
-        except Exception:
-            pass
+        melde_problem(
+            "Wochenchallenge-Video",
+            "Die Wochenchallenge-Videos fuer die naechste Woche konnten nicht erstellt "
+            "oder hochgeladen werden. In GitHub unter Actions -> \"Wochenchallenge "
+            "Videos (auto)\" -> \"Run workflow\" kann man es nochmal starten. Klappt es "
+            "wieder nicht: Claude fragen und diese Meldung hineinkopieren.",
+            tb[-2500:])
         sys.exit(1)
