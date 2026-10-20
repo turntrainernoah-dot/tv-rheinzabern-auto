@@ -10,7 +10,8 @@ Ablauf:
   4. create_wochenchallenge_v2.py mit neuer Config per subprocess ausführen
   5. PDF via SFTP hochladen nach /wochen-challenge/
   6. Punkte-State aktualisieren
-  7. E-Mail Bestätigung senden
+  7. Bei Problemen: Meldung im Admin-Bereich (config/meldungen.json, seit 20.10.2026
+     statt E-Mail/WhatsApp - Erfolgsmeldungen gibt es keine mehr)
 
 Name-Format im Mail:  TAG.MONAT Name [optional: Emoji / für gestern / Wochentag]
 Bsp:  13.6 Vorname G1
@@ -27,6 +28,10 @@ from email.header import decode_header
 
 import paramiko
 
+from meldungen import melde_problem
+
+BEREICH = "Wochenchallenge"
+
 # ════════════════════════════════════════════════════════════════
 #  KONFIGURATION
 # ════════════════════════════════════════════════════════════════
@@ -36,10 +41,10 @@ SSH_USER      = os.environ.get("SSH_USER",     "a2358459")
 SSH_PASSWORD  = os.environ.get("SSH_PASSWORD", "")
 SSH_PORT      = int(os.environ.get("SSH_PORT", "22"))
 
+# Gmail-Zugang wird NUR noch zum EMPFANGEN der WC-Mails (IMAP) gebraucht,
+# seit 20.10.2026 wird nichts mehr versendet.
 GMAIL_USER         = os.environ.get("GMAIL_USER",         "turntrainernoah@gmail.com")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
-WHATSAPP_PHONE    = os.environ.get("WHATSAPP_PHONE", "")
-CALLMEBOT_APIKEY  = os.environ.get("CALLMEBOT_APIKEY", "")
 
 # --- Wochenchallenge-Quelle: "email" (Mail) oder "chat" (admin.php WhatsApp-Chat + KI) ---
 WC_SOURCE         = os.environ.get("WC_SOURCE", "email")
@@ -167,47 +172,10 @@ def save_wc_state(sftp, state):
     print("[OK] wc_state_auto.json aktualisiert.")
 
 # ════════════════════════════════════════════════════════════════
-#  WHATSAPP (CallMeBot)
+#  BENACHRICHTIGUNG
+#  Seit 20.10.2026 keine E-Mail/WhatsApp mehr. Probleme landen per
+#  meldungen.melde_problem() im Admin-Bereich ("Nachrichten").
 # ════════════════════════════════════════════════════════════════
-
-def send_email(text):
-    import os, smtplib, ssl as _ssl
-    from email.mime.text import MIMEText
-    user = os.environ.get("GMAIL_USER", "")
-    pw   = os.environ.get("GMAIL_APP_PASSWORD", "")
-    to   = os.environ.get("EMAIL_TO", "") or user
-    if not user or not pw:
-        print("[MAIL] keine Gmail-Zugangsdaten - uebersprungen.")
-        return
-    try:
-        lines = [l for l in text.strip().splitlines() if l.strip()]
-        subj = "TV Rheinzabern: " + (lines[0][:80] if lines else "Info")
-        msg = MIMEText(text, _charset="utf-8")
-        msg["Subject"] = subj
-        msg["From"] = user
-        msg["To"] = to
-        ctx = _ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ctx) as s:
-            s.login(user, pw)
-            s.sendmail(user, [to], msg.as_string())
-        print("[MAIL] gesendet an", to)
-    except Exception as e:
-        print("[MAIL] Fehler:", e)
-
-
-def send_whatsapp(text):
-    """Sendet eine WhatsApp-Nachricht via CallMeBot (kostenlos)."""
-    send_email(text)
-    if not WHATSAPP_PHONE or not CALLMEBOT_APIKEY:
-        print(f"[WA-TEST] {text[:200]}")
-        return
-    try:
-        encoded = urllib.parse.quote(text)
-        url = f"https://api.callmebot.com/whatsapp.php?phone={WHATSAPP_PHONE}&text={encoded}&apikey={CALLMEBOT_APIKEY}"
-        with urllib.request.urlopen(url, timeout=15) as r:
-            print(f"[OK] WhatsApp gesendet (HTTP {r.status}): {text[:80]}...")
-    except Exception as e:
-        print(f"[FEHLER] WhatsApp konnte nicht gesendet werden: {e}")
 
 # ════════════════════════════════════════════════════════════════
 #  IMAP
@@ -576,10 +544,13 @@ def require_server_roster():
                "Es gibt keinen Namens-Fallback im Code mehr (Phase 2, 24.08.2026), "
                "damit die Automatik nie mit falschen/leeren Daten weiterlaeuft.")
         print(f"[FATAL] {msg}")
-        try:
-            send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\n{msg}")
-        except Exception:
-            pass
+        melde_problem(
+            BEREICH,
+            "Die Wochenchallenge-Liste konnte nicht erstellt werden, weil die "
+            "Namensliste auf dem Server nicht gelesen werden konnte. Bitte im "
+            "Admin-Bereich unter \"Gruppen bearbeiten\" pruefen, ob die Kinder noch "
+            "eingetragen sind, und Claude fragen.",
+            msg)
         raise SystemExit(msg)
 
 
@@ -596,9 +567,12 @@ def fetch_chat_body(sftp):
         raw = f.read().decode("utf-8"); f.close()
     except Exception as e:
         print(f"[CHAT] Keine {CHAT_REMOTE} auf dem Server ({e!r}).")
-        send_email("Wochenchallenge (Chat): kein Chat gefunden\n\n"
-                    f"Auf dem Server liegt keine {CHAT_REMOTE} ({e!r}).\n"
-                    "Hast du den Chat in admin.php eingefuegt und abgeschickt?")
+        melde_problem(
+            BEREICH,
+            "Die Wochenchallenge per Chat wurde gestartet, aber auf dem Server lag kein "
+            "Chat. Bitte im Admin-Bereich unter \"Wochenchallenge\" den WhatsApp-Chat "
+            "nochmal einfuegen und abschicken.",
+            f"Keine {CHAT_REMOTE} auf dem Server ({e!r}).", sftp=sftp)
         return None, None
     try:
         payload = json.loads(raw)
@@ -607,9 +581,11 @@ def fetch_chat_body(sftp):
         raw_chat = raw
     if not raw_chat.strip():
         print("[CHAT] Chat-Datei leer.")
-        send_email("Wochenchallenge (Chat): Chat-Datei war leer\n\n"
-                    "Die hochgeladene Chat-Datei war leer. Bitte den WhatsApp-Chat "
-                    "erneut in admin.php einfuegen und abschicken.")
+        melde_problem(
+            BEREICH,
+            "Der eingefuegte WhatsApp-Chat war leer. Bitte im Admin-Bereich unter "
+            "\"Wochenchallenge\" den Chat nochmal komplett einfuegen und abschicken.",
+            "Chat-Datei leer.", sftp=sftp)
         return None, None
     try:
         with sftp.open("wc_last_run.txt", "w") as _rf:
@@ -629,10 +605,12 @@ def fetch_chat_body(sftp):
                 _ef.write(f"{date.today()} Fehler: {e!r}")
         except Exception:
             pass
-        send_email("Wochenchallenge (Chat): Auswertung fehlgeschlagen\n\n"
-                    f"Fehler beim Auswerten des Chats: {e!r}\n\n"
-                    "Der Chat bleibt auf dem Server erhalten und wird beim naechsten "
-                    "Lauf erneut versucht. Bitte bei Bedarf in admin.php pruefen.")
+        melde_problem(
+            BEREICH,
+            "Der eingefuegte WhatsApp-Chat konnte nicht ausgewertet werden. Der Chat "
+            "bleibt gespeichert. Bitte einmal erneut abschicken; klappt es wieder "
+            "nicht, Claude fragen und diese Meldung hineinkopieren.",
+            f"Fehler beim Auswerten des Chats: {e!r}", sftp=sftp)
         return None, None
     if not body or not body.strip():
         print("[CHAT] Auswertung lieferte keine verwertbaren Zeilen -- Chat bleibt erhalten.")
@@ -642,15 +620,13 @@ def fetch_chat_body(sftp):
         except Exception:
             pass
         unsure_txt = "\n".join(info.get("unsure", [])) if info else ""
-        send_email("Wochenchallenge (Chat): keine Eintraege erkannt\n\n"
-                    "Im eingefuegten Chat wurde kein einziger gueltiger Trainings-"
-                    "Eintrag erkannt.\n\n"
-                    "Moegliche Gruende: falsches Zeitstempel-Format beim Chat-Export, "
-                    "keiner der Namen passt zum Roster, oder es waren nur Rueckfragen "
-                    "ohne Trainings-Meldung dabei.\n\n"
-                    + (f"Unsichere/uebersprungene Zeilen:\n{unsure_txt}\n\n" if unsure_txt else "")
-                    + "Der Chat bleibt auf dem Server erhalten -- bitte in admin.php "
-                      "pruefen und ggf. erneut einfuegen.")
+        melde_problem(
+            BEREICH,
+            "Im eingefuegten WhatsApp-Chat wurde kein einziger Trainings-Eintrag "
+            "erkannt (z.B. falsches Datumsformat beim Chat-Export oder kein Name passt "
+            "zur Gruppenliste). Bitte den Chat pruefen und erneut einfuegen.",
+            (f"Unsichere/uebersprungene Zeilen:\n{unsure_txt}" if unsure_txt
+             else "Keine unsicheren Zeilen gemeldet."), sftp=sftp)
         return None, None
     try:
         try: sftp.remove(CHAT_REMOTE + ".processed")
@@ -674,6 +650,13 @@ def main():
 
     if WC_SOURCE != "chat" and (not GMAIL_USER or not GMAIL_APP_PASSWORD):
         print("[ERROR] GMAIL_USER oder GMAIL_APP_PASSWORD nicht gesetzt.")
+        melde_problem(
+            BEREICH,
+            "Die Wochenchallenge-Mails koennen nicht abgerufen werden, weil der "
+            "Zugang zum Gmail-Postfach in GitHub fehlt (Secrets GMAIL_USER / "
+            "GMAIL_APP_PASSWORD). Die Liste kann trotzdem ueber den Admin-Bereich "
+            "(WhatsApp-Chat einfuegen) erstellt werden.",
+            "GMAIL_USER oder GMAIL_APP_PASSWORD nicht gesetzt.")
         sys.exit(1)
 
     # SFTP verbinden
@@ -711,7 +694,12 @@ def main():
         entries = parse_email_body(body)
     except ValueError as e:
         print(f"[ERROR] Parse-Fehler: {e}")
-        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDie WC-Mail konnte nicht geparst werden:\n{str(e)[:300]}\n\nBitte WC-Mail nochmal mit korrektem Format schicken.")
+        melde_problem(
+            BEREICH,
+            "Die Wochenchallenge-Eintraege konnten nicht gelesen werden (falsches "
+            "Format). Bitte die Eintraege nochmal im richtigen Format schicken "
+            "(je Zeile: TAG.MONAT Name, z.B. \"13.6 Vorname\").",
+            str(e)[:1000], sftp=sftp)
         sftp.close(); ssh.close()
         return
 
@@ -821,7 +809,11 @@ def main():
     if not os.path.exists(template_path):
         msg = f"create_wochenchallenge_v2.py nicht gefunden unter {template_path}"
         print(f"[ERROR] {msg}")
-        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDas WC-Template (create_wochenchallenge_v2.py) fehlt auf dem Server!\n\nBitte manuell hochladen: C:\\Claude\\create_wochenchallenge_v2.py → via upload_now.bat")
+        melde_problem(
+            BEREICH,
+            "Die Wochenchallenge-Liste konnte nicht erstellt werden, weil eine "
+            "Programmdatei fehlt. Bitte Claude fragen und diese Meldung hineinkopieren.",
+            msg, sftp=sftp)
         sftp.close(); ssh.close()
         return
 
@@ -833,7 +825,11 @@ def main():
         modified = replace_config_block(template, new_config)
     except ValueError as e:
         print(f"[ERROR] {e}")
-        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDas WC-Template konnte nicht angepasst werden:\n{str(e)[:300]}")
+        melde_problem(
+            BEREICH,
+            "Die Wochenchallenge-Liste konnte nicht erstellt werden (Vorlage liess sich "
+            "nicht anpassen). Bitte Claude fragen und diese Meldung hineinkopieren.",
+            str(e)[:1000], sftp=sftp)
         sftp.close(); ssh.close()
         return
 
@@ -852,10 +848,13 @@ def main():
     print("STDOUT:", result.stdout[:500])
     if result.returncode != 0:
         print("STDERR:", result.stderr[:500])
-        send_whatsapp(
-            f"Hi Noah, Cloude hier 🚨\n\nDas WC-Script ist abgestürzt (Code {result.returncode}):\n"
-            f"{result.stderr[:300]}"
-        )
+        melde_problem(
+            BEREICH,
+            "Beim Erstellen der Wochenchallenge-Liste ist ein Fehler passiert, die "
+            "Liste wurde nicht hochgeladen. Bitte Claude fragen und diese Meldung "
+            "hineinkopieren.",
+            f"WC-Script abgestuerzt (Code {result.returncode}):\n{result.stderr[-1500:]}",
+            sftp=sftp)
         sftp.close(); ssh.close()
         return
 
@@ -868,7 +867,11 @@ def main():
     if not os.path.exists(pdf_path):
         msg = f"PDF nicht gefunden: {pdf_path}\n\nScript-Output:\n{result.stdout[:500]}"
         print(f"[ERROR] {msg}")
-        send_whatsapp(f"Hi Noah, Cloude hier 🚨\n\nDie WC-PDF wurde nicht generiert. Script lief durch aber Datei fehlt.\n{msg[:200]}")
+        melde_problem(
+            BEREICH,
+            "Die Wochenchallenge-Liste (PDF) wurde nicht erzeugt und deshalb nicht "
+            "hochgeladen. Bitte Claude fragen und diese Meldung hineinkopieren.",
+            msg[:1500], sftp=sftp)
         sftp.close(); ssh.close()
         return
 
@@ -914,19 +917,21 @@ def main():
     sftp.close()
     ssh.close()
 
-    # Bestätigungs-WhatsApp
-    trainees = [f"{grp} {name}: {len(tage)} Pkt"
-                for grp, members in gruppen.items()
-                for name, tage in members.items() if tage]
-    send_whatsapp(
-        f"Hi Noah, Cloude hier 🏆\n\n"
-        f"Wochenchallenge {start_datum} – {end_datum} ist fertig und hochgeladen!\n\n"
-        f"Punkte diese Woche:\n" +
-        "\n".join(f"  {t}" for t in trainees) +
-        f"\n\ntv-rheinzabern.e-websolutions.de"
-    )
+    # Seit 20.10.2026 keine Bestaetigungs-Nachricht mehr (Erfolg = keine Meldung).
 
     print("\nFERTIG!")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        import traceback
+        _tb = traceback.format_exc()
+        print(_tb)
+        melde_problem(
+            BEREICH,
+            "Beim Erstellen der Wochenchallenge-Liste ist ein unerwarteter Fehler "
+            "passiert, die Liste ist evtl. nicht online. Bitte Claude fragen und diese "
+            "Meldung hineinkopieren.",
+            _tb)
+        raise

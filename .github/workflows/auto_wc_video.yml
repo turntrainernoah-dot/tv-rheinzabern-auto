@@ -47,9 +47,6 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           WC_EVENT: ${{ github.event_name }}
           WC_TARGET_SAM: ${{ github.event.inputs.target_sam }}
         run: python auto_wc_video.py

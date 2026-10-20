@@ -12,22 +12,32 @@ Die Workflows in diesem Repo sind keine Spielerei, sondern laufender Betrieb: Tr
 
 ## Aufbau
 
-- `auto_trainingsplan.py`, `auto_wochenchallenge.py`, `auto_wc_video.py`, `create_wochenchallenge_v2.py`, `wc_chat_parser.py`, `heartbeat.py`, `backup_state.py`, `build_step.py`, `check_quick.py` — die einzelnen Automatik-Skripte.
+- `auto_trainingsplan.py`, `auto_wochenchallenge.py`, `auto_wc_video.py`, `create_wochenchallenge_v2.py`, `wc_chat_parser.py`, `heartbeat.py`, `backup_state.py`, `build_step.py`, `check_quick.py` — die einzelnen Automatik-Skripte. `meldungen.py` — gemeinsame Problem-Meldung in den Admin-Bereich (siehe unten).
 - `.github/workflows/`: `auto_trainingsplan.yml`, `auto_wochenchallenge.yml`, `auto_wc_video.yml`, `auto_backup.yml`, `heartbeat.yml` — je ein Workflow pro Automatik.
 - `fonts/`, `state_backups/`: Hilfsdateien bzw. Zustandssicherungen der Automatik.
 - Zugangsdaten (SSH, Gmail) liegen ausschließlich als GitHub Secrets, nie im Code — siehe `README.md`.
 
-## Benachrichtigungen (Stand 12.09.2026)
+## Benachrichtigungen (Stand 20.10.2026): "Nachrichten" im Admin-Bereich statt Mail
 
-`send_whatsapp()` (auto_trainingsplan.py) schickt bei jedem Aufruf zuerst eine E-Mail
-(`send_email()`) — das ist der tatsächlich genutzte Kanal. Der zusätzliche WhatsApp-Versand
-über CallMeBot (`WHATSAPP_PHONE`/`CALLMEBOT_APIKEY`) wird **nicht mehr benutzt** — CallMeBot
-ist kostenpflichtig geworden und funktioniert mit dem alten kostenlosen Zugang nicht mehr.
-Der Code bricht dabei nicht ab (Try/Except, fällt ohne gesetzte Secrets auf einen reinen
-Log-Eintrag `[WA-TEST]` zurück) — die E-Mail-Benachrichtigung läuft unabhängig davon normal
-weiter. Genau dasselbe Muster wie beim GitHub-Models-Ausfall: ein kostenloser Drittanbieter
-kann jederzeit wegfallen/kostenpflichtig werden, ohne dass das restliche System betroffen ist.
+Seit 20.10.2026 wird **keine E-Mail und keine WhatsApp mehr versendet** (Übergabe an
+Trainer, die nur Website + GitHub haben). Stattdessen schreiben die Skripte **nur bei
+Fehlern/Problemen** über `meldungen.py::melde_problem(bereich, text, details, sftp=None)`
+einen Eintrag per SFTP in `config/meldungen.json` auf dem Server. `admin.php` (Repo
+`tv-trainerportal`) zeigt sie im Bereich **„Nachrichten“** an (roter Zähler im Menü,
+Knöpfe „Erledigt“/„Alle erledigt“, sonst „Alles läuft“).
 
+- Erfolgs-/Info-Meldungen ("Plan erstellt", "Video hochgeladen", "WC fertig", "Alles läuft")
+  gibt es **nicht mehr** – keine Meldung = alles in Ordnung.
+- `melde_problem()` wirft nie eine Exception (ein Melde-Fehler bricht nie den Lauf ab),
+  hält die Datei auf max. 100 Einträge und zählt eine gleiche offene Meldung nur hoch
+  (`anzahl`), statt sie bei jedem 30-Minuten-Lauf neu anzulegen.
+- `text` = kurzer Satz für Trainer ohne Technikwissen (was ist los, was tun);
+  `details` = technischer Fehler/Traceback zum Reinkopieren in Claude.
+- Keine Klarnamen in Meldungstexten im Code (öffentliches Repo). Laufzeitdaten in
+  `details` landen nur auf dem Server (`config/` ist gesperrt und wird nie deployt).
+- Das **Empfangen** der Wochenchallenge-Mails per IMAP (`GMAIL_USER`/`GMAIL_APP_PASSWORD`)
+  ist unverändert. Nicht mehr genutzte Secrets: `EMAIL_TO`, `WHATSAPP_PHONE`, `CALLMEBOT_APIKEY`.
+- `heartbeat.py` braucht dafür jetzt die `SSH_*`-Secrets (im Workflow eingetragen).
 
 ---
 
