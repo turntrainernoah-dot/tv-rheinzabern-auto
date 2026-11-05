@@ -1,9 +1,19 @@
 name: Automatischer Trainingsplan
 
 on:
+  # Seit 05.11.2026: Start bei Aenderung statt alle 30 Minuten. Die Website
+  # (index.php/admin.php) stoesst den Lauf per repository_dispatch an, sobald
+  # Abmeldungen, Trainingsentfall, Anmerkungen, Gruppen oder der Plan-Editor
+  # gespeichert werden. Die festen Zeiten unten sind nur noch Sicherheitsnetz
+  # bzw. fuer die zeitabhaengigen Schritte (Erstellungsfenster 5 Tage vorher,
+  # Veroeffentlichung Mi/Fr abends, Wechsel auf den naechsten Trainingstag).
+  repository_dispatch:
+    types: [trainingsplan]
   schedule:
-    - cron: '*/30 * * * *'
-    - cron: '0 14 * * 3,5'
+    - cron: '7 4,10,16 * * *'        # taeglich 3x Sicherheitsnetz
+    - cron: '0 14 * * 3,5'           # Trainingstag Nachmittag
+    - cron: '20 12,13,15,16 * * 3,5' # Trainingstag stuendlich bis Trainingsbeginn
+    - cron: '12 20,22 * * 3,5'       # Veroeffentlichungsfenster (>= 20:00 UTC)
   workflow_dispatch:
     inputs:
       force:
@@ -26,6 +36,12 @@ on:
         required: false
         default: false
         type: boolean
+
+# Mehrere Anstoesse kurz hintereinander: hoechstens ein Lauf aktiv + einer
+# wartend (neuere Wartende ersetzen aeltere), nie zwei parallel.
+concurrency:
+  group: trainingsplan
+  cancel-in-progress: false
 
 jobs:
   generate-plan:
