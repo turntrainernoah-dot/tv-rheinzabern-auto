@@ -12,7 +12,7 @@ Die Workflows in diesem Repo sind keine Spielerei, sondern laufender Betrieb: Tr
 
 ## Aufbau
 
-- `auto_trainingsplan.py`, `auto_wochenchallenge.py`, `auto_wc_video.py`, `create_wochenchallenge_v2.py`, `wc_chat_parser.py`, `heartbeat.py`, `backup_state.py`, `build_step.py`, `check_quick.py` — die einzelnen Automatik-Skripte. `meldungen.py` — gemeinsame Problem-Meldung in den Admin-Bereich (siehe unten).
+- `auto_trainingsplan.py`, `auto_wochenchallenge.py`, `auto_wc_video.py`, `create_wochenchallenge_v2.py`, `wc_chat_parser.py`, `heartbeat.py`, `backup_state.py`, `build_step.py`, `check_quick.py` — die einzelnen Automatik-Skripte. `meldungen.py` — gemeinsame Problem-Meldung in den Admin-Bereich (siehe unten). `logschutz.py` — kürzt nach dem Roster-Laden Personennamen in stdout/stderr auf Initialen (Actions-Logs sind öffentlich); betrifft nur die Konsolenausgabe. Neue `print()`s mit Namen sind dadurch abgedeckt, Ausgaben **vor** `namen_setzen()` nicht.
 - `.github/workflows/`: `auto_trainingsplan.yml`, `auto_wochenchallenge.yml`, `auto_wc_video.yml`, `auto_backup.yml`, `heartbeat.yml` — je ein Workflow pro Automatik.
 - `fonts/`, `state_backups/`: Hilfsdateien bzw. Zustandssicherungen der Automatik.
 - `.github/workflows/keepalive.yml`: committet am 1. jedes Monats `keepalive.txt` (aktuelles Datum). Grund: GitHub deaktiviert Cron-Workflows in öffentlichen Repos nach 60 Tagen ohne Commit. **Nicht entfernen.**
