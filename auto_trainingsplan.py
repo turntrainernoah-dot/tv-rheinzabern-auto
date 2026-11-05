@@ -893,14 +893,14 @@ def _find_free_coverer(trainer_plan, trainer_timing, slot, exclude, prefer=None)
     """Freien Trainer fuer 'slot' finden: erst Springer, dann Auf-/Abbau.
     Wer in diesem Slot selbst spaet/frueh geblockt ist, scheidet aus.
     Bugfix 31.08.2026 (Noah: "der Dauerspringer soll so lange wie moeglich
-    Springer sein, da es noch andere Springer wie Cassi/Torben gibt"): gibt
+    Springer sein, da es noch andere Springer wie Carla/Timo gibt"): gibt
     es mehrere freie Springer, wird ein NICHT-immer_springer-Trainer
     bevorzugt zur Vertretung eingesetzt, damit ein immer_springer-Trainer
-    (z.B. Andy) auch beim Einspringen fuer einen teil-abwesenden Kollegen
+    (z.B. Arne) auch beim Einspringen fuer einen teil-abwesenden Kollegen
     moeglichst als "Springer" sichtbar bleibt. Nur wenn kein anderer freier
     Springer da ist, uebernimmt er selbst (letzte Instanz).
-    Bugfix 12.09.2026 (Noah: "Cassi vertritt zwei Zeilen lang, dann macht
-    plotzlich Noah eine weitere Zeile derselben Vertretung, obwohl Cassi
+    Bugfix 12.09.2026 (Noah: "Carla vertritt zwei Zeilen lang, dann macht
+    plotzlich Noah eine weitere Zeile derselben Vertretung, obwohl Carla
     noch frei gewesen waere"): `prefer` ist der Trainer, der die VORHERIGE
     geblockte Zeile derselben Abwesenheit bereits uebernommen hat. War er
     schon vorher frei, bleibt er es i.d.R. auch fuer die naechste Zeile --
@@ -966,7 +966,7 @@ def apply_timing_coverage(trainer_plan, trainer_timing):
                 p = list(trainer_plan[coverer]); p[i] = (text, ck); trainer_plan[coverer] = p
                 preferred_coverer = coverer
                 continue
-            # Kein freier Trainer mehr (Noah, 23.09.2026: "geht Fabian, hat
+            # Kein freier Trainer mehr (Noah, 23.09.2026: "geht Bernd, hat
             # keiner G3 -> bei zu wenig Trainern 2 Gruppen zusammenlegen, z.B.
             # G3+G4"): die Gruppe mit einer gerade laufenden, zeit-
             # kompatiblen Gruppe (gleiche Phase in dieser Zeile) zusammenlegen.
@@ -1346,7 +1346,7 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
         return -999                  # nie -> hoechste Prioritaet
     def last_index_for_unit(t, unit_label):
         # Bugfix 30.08.2026 (Noah: "fuehlt sich an, als haette Noah immer G1 und
-        # Andy immer G3+G4"): verglich bisher das Rollen-Label exakt ("G3+G4" ==
+        # Arne immer G3+G4"): verglich bisher das Rollen-Label exakt ("G3+G4" ==
         # "G3+G4"), matchte also NIE, wenn eine Zusammenlegung mal anders ausfiel
         # (z.B. nur "G3" statt "G3+G4"). Ohne Ueberschneidung mit der Historie blieb
         # der Score fuer praktisch jeden Trainer dauerhaft -999 (nie), der
@@ -1400,7 +1400,7 @@ def _assign_units_fair(units, candidate_trainers, history, immer_springer):
     springers = [t for t in pool if t not in getters] + overflow_springers
 
     # Bugfix 30.08.2026 (Noah: 'fuehlt sich an, als haette Noah immer G1 und
-    # Andy immer G3+G4'): Die fruehere Zuteilung sortierte ALLE (Trainer,Einheit)-
+    # Arne immer G3+G4'): Die fruehere Zuteilung sortierte ALLE (Trainer,Einheit)-
     # Paare nach Score und griff dann gierig zu -- bei mehreren gleich guten
     # Paaren (haeufig, z.B. wenn zwei Trainer noch nie eine bestimmte Einheit
     # hatten) haengt das Ergebnis rein von der zufaelligen Iterationsreihenfolge
@@ -1481,7 +1481,7 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
         anmerkungen.insert(0, "ACHTUNG: Kein Trainer anwesend - bitte dringend klaeren!")
         return {t: None for t in ALLE_TRAINER}, {}, anmerkungen
 
-    # Bugfix 27.08.2026 (Noah: "Cassi geht ab 18:30, der Plan nimmt sie aber
+    # Bugfix 27.08.2026 (Noah: "Carla geht ab 18:30, der Plan nimmt sie aber
     # komplett raus, soll aber moeglichst lange eine Gruppe uebernehmen"):
     # frueher gehende/spaeter kommende Trainer sind normale Halter-Kandidaten,
     # NICHT von vornherein ausgeschlossen -- apply_timing_coverage() (siehe
@@ -1542,7 +1542,7 @@ def build_trainer_plan(absences, grid_rows, grid_phase, trainer_roles_history=No
     #    Partner mehr, bleiben ueberzaehlige Einheiten einzeln (Notlage) --
     #    werden dann unten als unbesetzt markiert.
     #
-    #    Bugfix 11.09.2026 (Noah: "Andy ist Dauerspringer und trotzdem wird
+    #    Bugfix 11.09.2026 (Noah: "Arne ist Dauerspringer und trotzdem wird
     #    G3+G4 zusammengelegt"): Zwischen 30.08. und 11.09.2026 zaehlte hier
     #    nur len(_normal_holders) -- immer_springer-Trainer wurden aus der
     #    Kopfzahl komplett rausgerechnet. Dadurch wurde bei Trainermangel
@@ -2012,7 +2012,7 @@ Regeln:
 - "kommt spaeter"/"erst um X"/"ist ab X (wieder) da" -> timing richtung "spaet"; "geht frueher"/"muss um X weg/los"/"geht ab X"/"nur bis X da"/"ist ab X weg" -> "frueh". uhrzeit als HH:MM oder null. WICHTIG: jede Nennung einer Uhrzeit zusammen mit einem Trainer, der teilweise da ist, IMMER als timing eintragen, NIEMALS als abwesend_trainer -- abwesend_trainer ist ausschliesslich fuer einen Trainer, der am GESAMTEN Training gar nicht da ist.
 - "GX entfaellt"/"faellt aus" -> gruppe_entfall ["GX"].
 - Geraetewahl "wir turnen X und Y" -> geraete {"g1":X,"g2":Y}, sonst geraete null.
-- Gruppen zusammenlegen OHNE genannten Trainer (z.B. "G3 und G4 zusammenlegen") -> merges [["G3","G4"]]. MIT genanntem Trainer ("Fabian macht G1+G2") -> zuteilung {trainer, gruppe:"G1+G2"}. "ich mache ..." -> trainer = der Schreiber. gruppe darf "Springer" oder "GX+GY" sein.
+- Gruppen zusammenlegen OHNE genannten Trainer (z.B. "G3 und G4 zusammenlegen") -> merges [["G3","G4"]]. MIT genanntem Trainer ("Bernd macht G1+G2") -> zuteilung {trainer, gruppe:"G1+G2"}. "ich mache ..." -> trainer = der Schreiber. gruppe darf "Springer" oder "GX+GY" sein.
 - Reiner Hinweis ("schreibe/bitte ...") -> nur notiz.
 - Nur Namen aus der Trainerliste, nur Gruppen aus der Gruppenliste, nur Geraete aus der Geraeteliste.
 - Keine Aktion in einem Feld: leere Liste [] bzw. null. Bei Unklarheit unsicher=true und notiz=Originaltext.
@@ -2217,12 +2217,12 @@ def build_ki_einteilung(absences, ki, grid_rows, grid_phase, trainer_roles_histo
             else:
                 forced[tr] = rawlab
 
-    # Bugfix 31.08.2026 (Noah: "Andy ist kein Springer sondern G3+G4, obwohl
+    # Bugfix 31.08.2026 (Noah: "Arne ist kein Springer sondern G3+G4, obwohl
     # er als Dauerspringer eingestellt ist"): eine per Anmerkung/KI abgeleitete
     # explizite Einzelgruppen-Zuteilung (ki.assign) wurde bisher fuer JEDEN
     # Trainer unbesehen uebernommen -- auch fuer einen immer_springer-Trainer,
     # obwohl an anderer Stelle im selben Plan noch ein normaler Trainer frei
-    # war, der die Gruppe stattdessen haette uebernehmen koennen. Andy soll
+    # war, der die Gruppe stattdessen haette uebernehmen koennen. Arne soll
     # laut Konfiguration IMMER WENN MOEGLICH Springer sein (gleiche "letzte
     # Instanz"-Regel wie in _assign_units_fair) -- deshalb hier: gibt es einen
     # verfuegbaren, noch nicht verplanten Nicht-immer_springer-Trainer, wird
@@ -2520,8 +2520,8 @@ def _parse_command_line(line):
         a, b = _resolve_group_name(m.group("a")), _resolve_group_name(m.group("b"))
         if a and b and a != b:
             return {"typ": "merge", "gruppen": sorted([a, b], key=lambda g: GRUPPEN_ORDER.index(g))}
-    # Verspaetung/Frueher-gehen MIT eindeutiger Ziffern-Uhrzeit (z.B. "Cassi
-    # geht ab 18:30", "Cassi muss um 18 Uhr los"): bisher wurde so etwas NIE
+    # Verspaetung/Frueher-gehen MIT eindeutiger Ziffern-Uhrzeit (z.B. "Carla
+    # geht ab 18:30", "Carla muss um 18 Uhr los"): bisher wurde so etwas NIE
     # deterministisch erkannt, sondern immer der KI ueberlassen -- schlug die
     # KI fehl (kein Token) oder klassifizierte falsch als Abwesenheit statt
     # Timing, wurde der Trainer faelschlich komplett aus dem Plan entfernt
@@ -2545,8 +2545,8 @@ def _parse_command_line(line):
     if m:
         full = _first_to_full(m.group("name"))
         rest = m.group("rest")
-        # Wird noch ein ANDERER Trainer erwaehnt (z.B. "Cassi geht ab 18:30,
-        # Fabian macht G3+G4"), ist das vermutlich eine zusammengesetzte
+        # Wird noch ein ANDERER Trainer erwaehnt (z.B. "Carla geht ab 18:30,
+        # Bernd macht G3+G4"), ist das vermutlich eine zusammengesetzte
         # Anweisung mit mehreren Anteilen -- das greedy rest-Muster wuerde den
         # zweiten Teil sonst stillschweigend in Cassis Notiz verschlucken statt
         # ihn anzuwenden. Lieber komplett der KI ueberlassen (die den ganzen

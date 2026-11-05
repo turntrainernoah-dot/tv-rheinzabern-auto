@@ -138,7 +138,7 @@ def _max_merge_down(gruppen, gruppen_zeiten, target_units):
     return len(units)
 
 def test_trainer_counts_and_immer_springer():
-    """Bugfix 30.08.2026 (Noah: 'Andy ist als Dauer-Springer eingeteilt und hat
+    """Bugfix 30.08.2026 (Noah: 'Arne ist als Dauer-Springer eingeteilt und hat
     trotzdem G3+G4'): Diese Testfunktion erwartete urspruenglich, dass ein
     immer_springer-Trainer IMMER nachgezogen wird, sobald weniger normale
     Trainer als Gruppen da sind -- selbst wenn zwei zeit-kompatible Gruppen
@@ -255,7 +255,7 @@ def test_rotation_frequency_tiebreak_verhindert_statisches_muster():
     gleichmaessiger."""
     gruppen = ["G1", "G2", "G3"]
     turner = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
-    trainer = ["Noah", "Fabian", "Cassian", "Julian"]  # 4 Trainer, 3 Gruppen -> 1 Springer
+    trainer = ["Noah", "Bernd", "Carsten", "Jens"]  # 4 Trainer, 3 Gruppen -> 1 Springer
     set_roster(gruppen, turner, trainer)
     grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
 
@@ -304,27 +304,27 @@ def test_springer_frequency_tiebreak():
 
 def test_find_free_coverer_prefers_non_immer_springer():
     """Bugfix 31.08.2026 (Noah: 'der Dauerspringer soll so lange wie moeglich
-    Springer bleiben, es gibt ja noch andere Springer wie Cassi/Torben'):
+    Springer bleiben, es gibt ja noch andere Springer wie Carla/Timo'):
     sind bei einer Vertretung (Trainer geht frueher/kommt spaeter) mehrere
     Springer frei, wird bevorzugt ein NICHT-immer_springer-Trainer zur
     Vertretung eingesetzt statt des Dauerspringers."""
-    a.IMMER_SPRINGER = {"Andy"}
+    a.IMMER_SPRINGER = {"Arne"}
     trainer_plan = {
-        "Andy":    [("Springer", "springer"), ("Springer", "springer")],
-        "Cassian": [("Springer", "springer"), ("Springer", "springer")],
-        "Fabian":  [("G1", "g1_blau"), ("geht frueher", "sonder")],
+        "Arne":    [("Springer", "springer"), ("Springer", "springer")],
+        "Carsten": [("Springer", "springer"), ("Springer", "springer")],
+        "Bernd":  [("G1", "g1_blau"), ("geht frueher", "sonder")],
     }
-    coverer = a._find_free_coverer(trainer_plan, {}, 1, exclude="Fabian")
-    check("bevorzugt Cassian (nicht immer_springer) statt Andy als Vertretung",
-          coverer == "Cassian", f"{coverer}")
+    coverer = a._find_free_coverer(trainer_plan, {}, 1, exclude="Bernd")
+    check("bevorzugt Carsten (nicht immer_springer) statt Arne als Vertretung",
+          coverer == "Carsten", f"{coverer}")
 
     trainer_plan2 = {
-        "Andy":   [("Springer", "springer"), ("Springer", "springer")],
-        "Fabian": [("G1", "g1_blau"), ("geht frueher", "sonder")],
+        "Arne":   [("Springer", "springer"), ("Springer", "springer")],
+        "Bernd": [("G1", "g1_blau"), ("geht frueher", "sonder")],
     }
-    coverer2 = a._find_free_coverer(trainer_plan2, {}, 1, exclude="Fabian")
+    coverer2 = a._find_free_coverer(trainer_plan2, {}, 1, exclude="Bernd")
     check("ohne Alternative uebernimmt der immer_springer-Trainer als letzte Instanz",
-          coverer2 == "Andy", f"{coverer2}")
+          coverer2 == "Arne", f"{coverer2}")
 
 # ════════════════════════════════════════════════════════════════
 # 7) KI-Pfad vs Auto-Pfad: keine strukturelle Drift bei leerer KI-Anweisung
@@ -364,16 +364,16 @@ def test_ki_path_parity():
 # ════════════════════════════════════════════════════════════════
 # 3b) Bugfix 31.08.2026: ki.assign darf einen immer_springer-Trainer nicht
 #     unbesehen in eine echte Gruppe zwingen, wenn ein anderer verfuegbarer
-#     Trainer stattdessen einspringen kann (Noah: "Andy ist kein Springer,
+#     Trainer stattdessen einspringen kann (Noah: "Arne ist kein Springer,
 #     sondern G3+G4, obwohl er Dauerspringer ist" -- eine per Anmerkung/KI
-#     abgeleitete Einzelgruppen-Zuteilung fuer Andy hatte das vorher
+#     abgeleitete Einzelgruppen-Zuteilung fuer Arne hatte das vorher
 #     unbesehen uebernommen).
 # ════════════════════════════════════════════════════════════════
 def test_ki_assign_respects_immer_springer():
     gruppen = ["G1", "G2", "G3"]
     turner = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
-    trainer = ["Andy K.", "Fabian G.", "Cassian P.", "Julian K."]  # 4 Trainer, 3 Gruppen
-    set_roster(gruppen, turner, trainer, immer_springer=["Andy K."])
+    trainer = ["Arne A.", "Bernd B.", "Carsten C.", "Jens J."]  # 4 Trainer, 3 Gruppen
+    set_roster(gruppen, turner, trainer, immer_springer=["Arne A."])
     grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
     absences = no_absences(gruppen)
 
@@ -381,29 +381,29 @@ def test_ki_assign_respects_immer_springer():
     # immer_springer-Trainer in eine echte Gruppe -- obwohl mit 4 Trainern
     # fuer 3 Gruppen genug normale Trainer da waeren, die stattdessen
     # einspringen koennten.
-    ki = {"assign": [{"trainer": "Andy K.", "gruppe": "G3"}]}
+    ki = {"assign": [{"trainer": "Arne A.", "gruppe": "G3"}]}
     plan, _s, _anm = a.build_ki_einteilung(absences, ki, grid_rows, grid_phase)
     roles = a._extract_trainer_roles(plan)
     check("immer_springer-Trainer bleibt Springer, wenn ein anderer Trainer die explizit zugeteilte Gruppe uebernehmen kann",
-          roles.get("Andy K.") == "Springer", f"{roles}")
+          roles.get("Arne A.") == "Springer", f"{roles}")
     check("die explizit zugeteilte Gruppe G3 wird trotzdem von jemandem uebernommen (nicht verworfen)",
           "G3" in roles.values(), f"{roles}")
 
-    # Jetzt ist Andy der EINZIGE verfuegbare Trainer ausser dem, der schon
-    # per expliziter Zuteilung anderweitig gebunden ist (Fabian als Springer
+    # Jetzt ist Arne der EINZIGE verfuegbare Trainer ausser dem, der schon
+    # per expliziter Zuteilung anderweitig gebunden ist (Bernd als Springer
     # fest eingeteilt) -- da bleibt keine Wahl, die explizite Zuteilung fuer
-    # Andy muss (letzte Instanz) uebernommen werden.
+    # Arne muss (letzte Instanz) uebernommen werden.
     gruppen2 = ["G1"]
     turner2 = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen2}
-    trainer2 = ["Andy K.", "Fabian G."]
-    set_roster(gruppen2, turner2, trainer2, immer_springer=["Andy K."])
+    trainer2 = ["Arne A.", "Bernd B."]
+    set_roster(gruppen2, turner2, trainer2, immer_springer=["Arne A."])
     grid_rows2, grid_phase2 = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
-    ki2 = {"assign": [{"trainer": "Fabian G.", "gruppe": "Springer"},
-                       {"trainer": "Andy K.", "gruppe": "G1"}]}
+    ki2 = {"assign": [{"trainer": "Bernd B.", "gruppe": "Springer"},
+                       {"trainer": "Arne A.", "gruppe": "G1"}]}
     plan2, _s2, _anm2 = a.build_ki_einteilung(no_absences(gruppen2), ki2, grid_rows2, grid_phase2)
     roles2 = a._extract_trainer_roles(plan2)
     check("ohne Alternative wird die explizite Zuteilung fuer den immer_springer-Trainer als letzte Instanz uebernommen",
-          roles2.get("Andy K.") == "G1", f"{roles2}")
+          roles2.get("Arne A.") == "G1", f"{roles2}")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -573,7 +573,7 @@ def test_partial_trainer_holds_group():
 
 
 def test_deterministic_timing_parser():
-    """Bugfix 27.08.2026: Freitext-Anmerkungen wie 'Cassi geht ab 18:30'
+    """Bugfix 27.08.2026: Freitext-Anmerkungen wie 'Carla geht ab 18:30'
     wurden bisher NIE deterministisch erkannt, sondern immer der KI ueber-
     lassen -- schlug die KI fehl oder klassifizierte faelschlich als
     Abwesenheit statt Timing, wurde der Trainer komplett aus dem Plan
@@ -582,19 +582,19 @@ def test_deterministic_timing_parser():
     die gaengigen Formulierungen."""
     gruppen = ["G1"]
     turner = {"G1": ["G1Kind1", "G1Kind2", "G1Kind3"]}
-    trainer = ["Cassi", "Fabian"]
+    trainer = ["Carla", "Bernd"]
     set_roster(gruppen, turner, trainer)
 
-    cmd = a._parse_command_line("Cassi geht ab 18:30")
-    check("'Cassi geht ab 18:30' wird als trainer_timing erkannt",
+    cmd = a._parse_command_line("Carla geht ab 18:30")
+    check("'Carla geht ab 18:30' wird als trainer_timing erkannt",
           cmd is not None and cmd.get("typ") == "trainer_timing", f"{cmd}")
     check("Richtung korrekt als 'frueh' erkannt", cmd and cmd.get("kind") == "frueh", f"{cmd}")
     check("Uhrzeit korrekt als 18:30 erkannt", cmd and cmd.get("time_str") == "18:30", f"{cmd}")
 
-    cmd2 = a._parse_command_line("Cassi kommt erst um 18:00")
+    cmd2 = a._parse_command_line("Carla kommt erst um 18:00")
     check("'kommt erst um X' wird als 'spaet' erkannt", cmd2 and cmd2.get("kind") == "spaet", f"{cmd2}")
 
-    cmd3 = a._parse_command_line("Cassi geht ab 18:30, Fabian macht G1")
+    cmd3 = a._parse_command_line("Carla geht ab 18:30, Bernd macht G1")
     check("Zusammengesetzte Zeile mit zweitem Trainer wird NICHT deterministisch geparst (-> KI)",
           cmd3 is None, f"{cmd3}")
 
@@ -602,10 +602,10 @@ def test_deterministic_timing_parser():
     a._apply_command(cmd, fe)
     check("_apply_command setzt manuell_bearbeitet", fe.get("manuell_bearbeitet") is True)
     check("_apply_command schreibt ki.timing in derselben Struktur wie der KI-Pfad",
-          fe.get("ki", {}).get("timing") == [{"trainer": "Cassi", "richtung": "frueh", "uhrzeit": "18:30"}],
+          fe.get("ki", {}).get("timing") == [{"trainer": "Carla", "richtung": "frueh", "uhrzeit": "18:30"}],
           f"{fe}")
 
-    cmd4 = a._parse_command_line("Cassi abwesend")
+    cmd4 = a._parse_command_line("Carla abwesend")
     check("echte volle Abwesenheit bleibt weiterhin 'trainer_abwesend' (keine Regression)",
           cmd4 and cmd4.get("typ") == "trainer_abwesend", f"{cmd4}")
 
@@ -614,12 +614,12 @@ def test_deterministic_timing_parser():
     # matchte urspruenglich NICHT (die Schluesselwortliste erwartete die
     # zusammenhaengende Phrase "muss los", nicht durch die Uhrzeit getrennt).
     for text, exp_kind, exp_time in [
-        ("Cassi muss um 18:30 los", "frueh", "18:30"),
-        ("Cassi muss leider um 18 Uhr weg", "frueh", "18:00"),
-        ("Cassi muss heute schon um 18:30 gehen", "frueh", "18:30"),
-        ("Cassi geht früher ca 18:30", "frueh", "18:30"),
-        ("Cassi geht ab ca 18 Uhr", "frueh", "18:00"),
-        ("Cassi kommt später, ca 18 Uhr", "spaet", "18:00"),
+        ("Carla muss um 18:30 los", "frueh", "18:30"),
+        ("Carla muss leider um 18 Uhr weg", "frueh", "18:00"),
+        ("Carla muss heute schon um 18:30 gehen", "frueh", "18:30"),
+        ("Carla geht früher ca 18:30", "frueh", "18:30"),
+        ("Carla geht ab ca 18 Uhr", "frueh", "18:00"),
+        ("Carla kommt später, ca 18 Uhr", "spaet", "18:00"),
     ]:
         c = a._parse_command_line(text)
         check(f"'{text}' -> trainer_timing/{exp_kind}/{exp_time}",
@@ -627,16 +627,16 @@ def test_deterministic_timing_parser():
               and c.get("kind") == exp_kind and c.get("time_str") == exp_time, f"{c}")
 
     check("echte Krankmeldung ohne Timing-Schluesselwort bleibt unerkannt (-> KI, nicht faelschlich Timing)",
-          a._parse_command_line("Cassi ist krank") is None)
+          a._parse_command_line("Carla ist krank") is None)
 
     # Noah 28.08.2026, zu Recht: der deterministische Parser soll KEINE
     # Zeiten "raten" -- eine kolloquiale Uhrzeit ohne Ziffern (die er nicht
     # verstehen kann, eine KI aber durchaus) muss der KI ueberlassen bleiben,
     # statt mit einer falschen/fehlenden Uhrzeit trotzdem angewendet zu werden.
     check("kolloquiale Uhrzeit ohne Ziffern ('halb sieben') bleibt der KI ueberlassen",
-          a._parse_command_line("Cassi geht heute früher, so gegen halb sieben") is None)
+          a._parse_command_line("Carla geht heute früher, so gegen halb sieben") is None)
     check("Schluesselwort ohne jede Uhrzeit bleibt ebenfalls der KI ueberlassen (keine Rate-Anwendung)",
-          a._parse_command_line("Cassi geht früher") is None)
+          a._parse_command_line("Carla geht früher") is None)
 
 
 def test_absences_frueher_gehen_checkbox():
@@ -648,7 +648,7 @@ def test_absences_frueher_gehen_checkbox():
     verschwand statt teil-anwesend zu bleiben -- der real gemeldete Bug."""
     gruppen = ["G1"]
     turner = {"G1": ["G1Kind1", "G1Kind2", "G1Kind3"]}
-    trainer = ["Cassi", "Fabian"]
+    trainer = ["Carla", "Bernd"]
     set_roster(gruppen, turner, trainer)
 
     grid_rows = [(17 * 60 + m, 17 * 60 + m + 15) for m in range(0, 120, 15)]  # 17:00-19:00
@@ -657,32 +657,32 @@ def test_absences_frueher_gehen_checkbox():
     # Haken gesetzt, aber Notiz-Text enthaelt KEIN erkennbares Timing-Schluesselwort
     # (z.B. weil der Trainer nur einen Freitext ohne "geht"/"ab"/Uhrzeit eingegeben hat).
     abmeldungen = [{
-        "datum": "2026-08-28", "name": "Cassi", "gruppe": "",
+        "datum": "2026-08-28", "name": "Carla", "gruppe": "",
         "notiz": "bin heute früher weg", "verspaetung": False, "frueher_gehen": True,
     }]
 
     absences, _late, timing = a.get_absences(abmeldungen, training_date, grid_rows)
-    check("Cassi bleibt NICHT in absences['Trainer'] (weiterhin anwesend)",
-          "Cassi" not in absences.get("Trainer", []), f"{absences}")
-    check("Cassi landet in trainer_timing (Teil-Anwesenheit statt komplett entfernt)",
-          "Cassi" in timing, f"{timing}")
+    check("Carla bleibt NICHT in absences['Trainer'] (weiterhin anwesend)",
+          "Carla" not in absences.get("Trainer", []), f"{absences}")
+    check("Carla landet in trainer_timing (Teil-Anwesenheit statt komplett entfernt)",
+          "Carla" in timing, f"{timing}")
     check("Richtung wird aus dem Haken als 'frueh' uebernommen (nicht 'spaet')",
-          timing.get("Cassi", {}).get("kind") == "frueh", f"{timing}")
+          timing.get("Carla", {}).get("kind") == "frueh", f"{timing}")
 
     # Haken gesetzt UND Notiz enthaelt eine konkrete Uhrzeit -> Uhrzeit wird trotzdem
     # mit uebernommen (der Haken bestimmt nur die Richtung, nicht die Zeitextraktion).
     abmeldungen2 = [{
-        "datum": "2026-08-28", "name": "Cassi", "gruppe": "",
+        "datum": "2026-08-28", "name": "Carla", "gruppe": "",
         "notiz": "geht ab 18:30", "verspaetung": False, "frueher_gehen": True,
     }]
     _absences2, _late2, timing2 = a.get_absences(abmeldungen2, training_date, grid_rows)
     check("Uhrzeit aus der Notiz wird trotz Haken weiterhin korrekt extrahiert",
-          timing2.get("Cassi", {}).get("time_str") == "18:30", f"{timing2}")
+          timing2.get("Carla", {}).get("time_str") == "18:30", f"{timing2}")
 
 
 def test_rotation_ueberlebt_wechselnde_merges():
     """Bugfix 30.08.2026 (Noah: 'fuehlt sich an, als haette Noah immer G1 und
-    Andy immer G3+G4'): _assign_units_fair() verglich Rollen-Labels bisher
+    Arne immer G3+G4'): _assign_units_fair() verglich Rollen-Labels bisher
     EXAKT ('G3+G4' == 'G3+G4'). Wich die Zusammenlegung eine Woche ab (z.B.
     nur 'G3' statt 'G3+G4', weil an dem Tag genug Kinder da waren), fand die
     Historie nie einen Treffer -- der Score blieb dauerhaft -999 (nie), und
@@ -704,13 +704,13 @@ def test_rotation_ueberlebt_wechselnde_merges():
     # G3/G4-Rolle auf beide Trainer verteilen, nicht bei einem haengen bleiben.
     gruppen = ["G1", "G2", "G3", "G4"]
     turner_voll = {g: [f"{g}K{i}" for i in range(1, 6)] for g in gruppen}
-    trainer = ["Noah", "Andy", "T3", "T4"]
+    trainer = ["Noah", "Arne", "T3", "T4"]
     zeiten = default_zeiten_for_all(gruppen)  # G1/G2 Standard, G3/G4 versetzt+kompatibel zueinander
     set_roster(gruppen, turner_voll, trainer, zeiten=zeiten)
     grid_rows, grid_phase = a.compute_time_grid(a.GRUPPEN_ZEITEN, "mi")
 
     state = {"plan_data": {}}
-    g3_g4_holder_counts = {"Noah": 0, "Andy": 0, "T3": 0, "T4": 0}
+    g3_g4_holder_counts = {"Noah": 0, "Arne": 0, "T3": 0, "T4": 0}
     for week in range(8):
         # jede zweite Woche ist G4 zu klein (<3 Kinder) -> Zwangsmerge mit G3;
         # sonst laufen alle 4 Gruppen einzeln.
