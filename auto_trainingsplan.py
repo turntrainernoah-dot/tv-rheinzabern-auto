@@ -20,6 +20,7 @@ from datetime import date, timedelta, datetime, timezone
 import paramiko
 import openpyxl
 from meldungen import melde_problem
+import logschutz
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 
@@ -2834,6 +2835,9 @@ def main():
     ssh, sftp = get_sftp()
     apply_config_roster(sftp)
     require_server_roster()
+    logschutz.namen_setzen([n for v in ALLE_TURNER.values() for n in v]
+                           + list(ALLE_TRAINER) + list(WEBSITE_TO_DISPLAY)
+                           + list(WEBSITE_TO_DISPLAY.values()))
 
     state              = load_state(sftp)
     abmeldungen, raw_abm_hash = read_abmeldungen(sftp)

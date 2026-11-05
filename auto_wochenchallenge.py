@@ -29,6 +29,7 @@ from email.header import decode_header
 import paramiko
 
 from meldungen import melde_problem
+import logschutz
 
 BEREICH = "Wochenchallenge"
 
@@ -665,6 +666,9 @@ def main():
     apply_config_roster(sftp)
     apply_name_aliases(sftp)
     require_server_roster()
+    logschutz.namen_setzen([n for v in WC_GRUPPEN_TEMPLATE.values() for n in v]
+                           + list(NAME_MAP) + [v[1] for v in NAME_MAP.values()]
+                           + list(NAME_NORMALIZE) + list(NAME_NORMALIZE.values()))
     wc_state  = load_wc_state(sftp)
 
     if WC_SOURCE == "chat":
